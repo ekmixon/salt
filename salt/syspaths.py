@@ -14,6 +14,7 @@
 """
 
 
+
 import logging
 import os.path
 import sys
@@ -61,17 +62,16 @@ else:
     for key in EXPECTED_VARIABLES:
         if hasattr(__generated_syspaths, key):
             continue
-        else:
-            if typo_warning:
-                log.warning("Possible Typo?")
-                log.warning(
-                    "To dissolve this warning add `[variable] = None` to _syspaths.py"
-                )
-            typo_warning = False
-            log.warning("Variable %s is missing, value set to None", key)
-            setattr(
-                __generated_syspaths, key, None
-            )  # missing variables defaulted to None
+        if typo_warning:
+            log.warning("Possible Typo?")
+            log.warning(
+                "To dissolve this warning add `[variable] = None` to _syspaths.py"
+            )
+        typo_warning = False
+        log.warning("Variable %s is missing, value set to None", key)
+        setattr(
+            __generated_syspaths, key, None
+        )  # missing variables defaulted to None
 
 # Let's find out the path of this module
 if "SETUP_DIRNAME" in globals():
@@ -91,11 +91,7 @@ BOOTSTRAP = os.path.join(CLOUD_DIR, "deploy", "bootstrap-salt.sh")
 ROOT_DIR = __generated_syspaths.ROOT_DIR
 if ROOT_DIR is None:
     # The installation time value was not provided, let's define the default
-    if __PLATFORM.startswith("win"):
-        ROOT_DIR = r"c:\salt"
-    else:
-        ROOT_DIR = "/"
-
+    ROOT_DIR = r"c:\salt" if __PLATFORM.startswith("win") else "/"
 CONFIG_DIR = __generated_syspaths.CONFIG_DIR
 if CONFIG_DIR is None:
     if __PLATFORM.startswith("win"):

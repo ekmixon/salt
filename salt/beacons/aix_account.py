@@ -57,11 +57,7 @@ def beacon(config):
 
     """
 
-    ret = []
-
     user = config["user"]
 
     locked_accounts = __salt__["shadow.login_failures"](user)
-    ret.append({"accounts": locked_accounts})
-
-    return ret
+    return [{"accounts": locked_accounts}]

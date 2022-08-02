@@ -189,10 +189,8 @@ def _text(username, password, **kwargs):
                 if hashtype == "plaintext":
                     if this_password == password:
                         return True
-                else:
-                    # Exceptions for unknown hash types will be raised by hashutil.digest
-                    if this_password == __salt__["hashutil.digest"](password, hashtype):
-                        return True
+                elif this_password == __salt__["hashutil.digest"](password, hashtype):
+                    return True
 
                 # Short circuit if we've already found the user but the password was wrong
                 return False
@@ -220,7 +218,7 @@ def _htdigest(username, password, **kwargs):
     Provide authentication via Apache-style htdigest files
     """
 
-    realm = kwargs.get("realm", None)
+    realm = kwargs.get("realm")
     if not realm:
         log.error(
             "salt.auth.file: A ^realm must be defined in "

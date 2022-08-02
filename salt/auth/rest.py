@@ -60,9 +60,7 @@ def auth(username, password):
     )
     if result["status"] == 200:
         log.debug("eauth REST call returned 200: %s", result)
-        if result["dict"] is not None:
-            return result["dict"]
-        return True
+        return result["dict"] if result["dict"] is not None else True
     else:
         log.debug("eauth REST call failed: %s", result)
         return False

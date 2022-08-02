@@ -33,24 +33,26 @@ def _to_list(obj):
     """
     Convert snetinfo object to list
     """
-    ret = {}
-
-    for attr in __attrs:
-        if hasattr(obj, attr):
-            ret[attr] = getattr(obj, attr)
-    return ret
+    return {attr: getattr(obj, attr) for attr in __attrs if hasattr(obj, attr)}
 
 
 def __virtual__():
-    if not HAS_PSUTIL:
-        return (False, "cannot load network_info beacon: psutil not available")
-    return __virtualname__
+    return (
+        __virtualname__
+        if HAS_PSUTIL
+        else (False, "cannot load network_info beacon: psutil not available")
+    )
 
 
 def validate(config):
     """
     Validate the beacon configuration
     """
+
+    if not isinstance(config, list):
+        return False, ("Configuration for network_info beacon must be a list.")
+    _config = {}
+    list(map(_config.update, config))
 
     VALID_ITEMS = [
         "type",
@@ -64,29 +66,20 @@ def validate(config):
         "dropout",
     ]
 
-    # Configuration for load beacon should be a list of dicts
-    if not isinstance(config, list):
-        return False, ("Configuration for network_info beacon must be a list.")
-    else:
-
-        _config = {}
-        list(map(_config.update, config))
-
-        for item in _config.get("interfaces", {}):
-            if not isinstance(_config["interfaces"][item], dict):
-                return (
-                    False,
-                    (
-                        "Configuration for network_info beacon must "
-                        "be a list of dictionaries."
-                    ),
-                )
-            else:
-                if not any(j in VALID_ITEMS for j in _config["interfaces"][item]):
-                    return (
-                        False,
-                        ("Invalid configuration item in Beacon configuration."),
-                    )
+    for item in _config.get("interfaces", {}):
+        if not isinstance(_config["interfaces"][item], dict):
+            return (
+                False,
+                (
+                    "Configuration for network_info beacon must "
+                    "be a list of dictionaries."
+                ),
+            )
+        if all(j not in VALID_ITEMS for j in _config["interfaces"][item]):
+            return (
+                False,
+                ("Invalid configuration item in Beacon configuration."),
+            )
     return True, "Valid beacon configuration"
 
 
@@ -171,11 +164,10 @@ def beacon(config):
                             _diff = True
                         else:
                             log.debug("attr %s", getattr(_if_stats, attr, None))
-                    else:
-                        if getattr(_if_stats, attr, None) == int(
+                    elif getattr(_if_stats, attr, None) == int(
                             interface_config[attr]
                         ):
-                            _diff = True
+                        _diff = True
             if _diff:
                 ret.append(
                     {"interface": interface, "network_info": _to_list(_if_stats)}

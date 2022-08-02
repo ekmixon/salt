@@ -32,23 +32,20 @@ for f in os.listdir(join(src, "pkg/rpm")):
 
 
 def srcfilter(ti):
-    if "/.git" in ti.name:
-        return None
-    return ti
+    return None if "/.git" in ti.name else ti
 
 
-with tarfile.open(
-    join(rpmbuild, "SOURCES/salt-%s.tar.gz" % salt_version), "w|gz"
-) as tf:
-    tf.add(src, arcname="salt-%s" % salt_version, filter=srcfilter)
+with tarfile.open(join(rpmbuild, f"SOURCES/salt-{salt_version}.tar.gz"), "w|gz") as tf:
+    tf.add(src, arcname=f"salt-{salt_version}", filter=srcfilter)
 
 
 cmd = [
     "rpmbuild",
     "-bb",
-    "--define=salt_version %s" % salt_version,
-    "--define=buildid %s" % args.buildid,
+    f"--define=salt_version {salt_version}",
+    f"--define=buildid {args.buildid}",
     "salt.spec",
 ]
+
 print("Executing: %s" % " ".join('"%s"' % c for c in cmd))
 check_call(cmd, cwd=join(rpmbuild, "SPECS"))

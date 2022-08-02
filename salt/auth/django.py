@@ -72,9 +72,7 @@ __virtualname__ = "django"
 
 
 def __virtual__():
-    if HAS_DJANGO:
-        return __virtualname__
-    return False
+    return __virtualname__ if HAS_DJANGO else False
 
 
 def is_connection_usable():
@@ -105,14 +103,14 @@ def __django_auth_setup():
     if "^model" in __opts__["external_auth"]["django"]:
         django_model_fullname = __opts__["external_auth"]["django"]["^model"]
         django_model_name = django_model_fullname.split(".")[-1]
-        django_module_name = ".".join(django_model_fullname.split(".")[0:-1])
+        django_module_name = ".".join(django_model_fullname.split(".")[:-1])
 
         # pylint: disable=possibly-unused-variable
         django_auth_module = __import__(
             django_module_name, globals(), locals(), "SaltExternalAuthModel"
         )
         # pylint: enable=possibly-unused-variable
-        DJANGO_AUTH_CLASS_str = "django_auth_module.{}".format(django_model_name)
+        DJANGO_AUTH_CLASS_str = f"django_auth_module.{django_model_name}"
         DJANGO_AUTH_CLASS = eval(DJANGO_AUTH_CLASS_str)  # pylint: disable=W0123
 
 
@@ -133,17 +131,16 @@ def auth(username, password):
     import django.contrib.auth  # pylint: disable=import-error,3rd-party-module-not-gated,no-name-in-module
 
     user = django.contrib.auth.authenticate(username=username, password=password)
-    if user is not None:
-        if user.is_active:
-            log.debug("Django authentication successful")
-            return True
-        else:
-            log.debug(
-                "Django authentication: the password is valid but the account is disabled."
-            )
-    else:
+    if user is None:
         log.debug("Django authentication failed.")
 
+    elif user.is_active:
+        log.debug("Django authentication successful")
+        return True
+    else:
+        log.debug(
+            "Django authentication: the password is valid but the account is disabled."
+        )
     return False
 
 
@@ -204,12 +201,11 @@ def acl(username):
         else:
             found = False
             for d in auth_dict[a.user_fk.username]:
-                if isinstance(d, dict):
-                    if a.minion_or_fn_matcher in d:
-                        auth_dict[a.user_fk.username][a.minion_or_fn_matcher].append(
-                            a.minion_fn
-                        )
-                        found = True
+                if isinstance(d, dict) and a.minion_or_fn_matcher in d:
+                    auth_dict[a.user_fk.username][a.minion_or_fn_matcher].append(
+                        a.minion_fn
+                    )
+                    found = True
             if not found:
                 auth_dict[a.user_fk.username].append(
                     {a.minion_or_fn_matcher: [a.minion_fn]}

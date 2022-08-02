@@ -34,12 +34,12 @@ class PublisherACL:
         # If this is a regular command, it is a single function
         if isinstance(cmd, str):
             cmd = [cmd]
-        for fun in cmd:
-            if not salt.utils.stringutils.check_whitelist_blacklist(
+        return any(
+            not salt.utils.stringutils.check_whitelist_blacklist(
                 fun, blacklist=self.blacklist.get("modules", [])
-            ):
-                return True
-        return False
+            )
+            for fun in cmd
+        )
 
     def user_is_whitelisted(self, user):
         return salt.utils.stringutils.check_whitelist_blacklist(
@@ -50,9 +50,9 @@ class PublisherACL:
         # If this is a regular command, it is a single function
         if isinstance(cmd, str):
             cmd = [cmd]
-        for fun in cmd:
-            if salt.utils.stringutils.check_whitelist_blacklist(
+        return any(
+            salt.utils.stringutils.check_whitelist_blacklist(
                 fun, whitelist=self.blacklist.get("modules", [])
-            ):
-                return True
-        return False
+            )
+            for fun in cmd
+        )

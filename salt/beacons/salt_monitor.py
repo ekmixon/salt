@@ -44,7 +44,7 @@ def validate(config):
         # a simple str is taking as the single function with no args / kwargs
         fun = _config["salt_fun"]
         if fun not in __salt__:
-            return False, "{} not in __salt__".format(fun)
+            return False, f"{fun} not in __salt__"
     else:
         for entry in _config["salt_fun"]:
             if isinstance(entry, dict):
@@ -53,35 +53,21 @@ def validate(config):
                 for key in args_kwargs_dict:
                     if key == "args":
                         if not isinstance(args_kwargs_dict[key], list):
-                            return (
-                                False,
-                                "args key for fun {} must be list".format(fun),
-                            )
+                            return False, f"args key for fun {fun} must be list"
                     elif key == "kwargs":
                         if not isinstance(args_kwargs_dict[key], list):
-                            return (
-                                False,
-                                "kwargs key for fun {} must be list of key value pairs".format(
-                                    fun
-                                ),
-                            )
+                            return False, f"kwargs key for fun {fun} must be list of key value pairs"
                         for key_value in args_kwargs_dict[key]:
                             if not isinstance(key_value, dict):
-                                return (
-                                    False,
-                                    "{} is not a key / value pair".format(key_value),
-                                )
+                                return False, f"{key_value} is not a key / value pair"
                     else:
-                        return (
-                            False,
-                            "key {} not allowed under fun {}".format(key, fun),
-                        )
+                        return False, f"key {key} not allowed under fun {fun}"
             else:
                 # entry must be function itself
                 fun = entry
 
             if fun not in __salt__:
-                return False, "{} not in __salt__".format(fun)
+                return False, f"{fun} not in __salt__"
 
     return True, "valid config"
 
@@ -106,9 +92,7 @@ def beacon(config):
             args = ()
             kwargs = {}
 
-        ret = __salt__[fun](*args, **kwargs)
-
-        if ret:
+        if ret := __salt__[fun](*args, **kwargs):
             _ret = {"salt_fun": fun, "ret": ret}
             if args:
                 _ret["args"] = args

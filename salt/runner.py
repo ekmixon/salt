@@ -184,7 +184,7 @@ class Runner(RunnerClient):
         arg = self.opts.get("fun", None)
         docs = super().get_docs(arg)
         for fun in sorted(docs):
-            display_output("{}:".format(fun), "text", self.opts)
+            display_output(f"{fun}:", "text", self.opts)
             print(docs[fun])
 
     # TODO: move to mixin whenever we want a salt-wheel cli
@@ -236,13 +236,12 @@ class Runner(RunnerClient):
                         resolver = salt.auth.Resolver(self.opts)
                         res = resolver.cli(self.opts["eauth"])
                         if self.opts["mktoken"] and res:
-                            tok = resolver.token_cli(self.opts["eauth"], res)
-                            if tok:
+                            if tok := resolver.token_cli(self.opts["eauth"], res):
                                 low["token"] = tok.get("token", "")
                         if not res:
                             log.error("Authentication failed")
                             return ret
-                        low.update(res)
+                        low |= res
                         low["eauth"] = self.opts["eauth"]
                 else:
                     user = salt.utils.user.get_specific_user()
@@ -291,24 +290,21 @@ class Runner(RunnerClient):
                     evt.fire_event(
                         {
                             "success": False,
-                            "return": "{}".format(exc),
+                            "return": f"{exc}",
                             "retcode": 254,
                             "fun": self.opts["fun"],
                             "fun_args": fun_args,
                             "jid": self.jid,
                         },
-                        tag="salt/run/{}/ret".format(self.jid),
+                        tag=f"salt/run/{self.jid}/ret",
                     )
-                # Attempt to grab documentation
-                if "fun" in low:
-                    ret = self.get_docs("{}*".format(low["fun"]))
-                else:
-                    ret = None
 
+                # Attempt to grab documentation
+                ret = self.get_docs(f'{low["fun"]}*') if "fun" in low else None
                 # If we didn't get docs returned then
                 # return the `not availble` message.
                 if not ret:
-                    ret = "{}".format(exc)
+                    ret = f"{exc}"
                 if not self.opts.get("quiet", False):
                     display_output(ret, "nested", self.opts)
             else:

@@ -127,9 +127,7 @@ except ImportError:
 
 
 def __virtual__():
-    if os.path.isfile(BTMP):
-        return __virtualname__
-    return False
+    return __virtualname__ if os.path.isfile(BTMP) else False
 
 
 def _validate_time_range(trange, status, msg):
@@ -144,7 +142,7 @@ def _validate_time_range(trange, status, msg):
         status = False
         msg = "The time_range parameter for " "btmp beacon must " "be a dictionary."
 
-    if not all(k in trange for k in ("start", "end")):
+    if any(k not in trange for k in ("start", "end")):
         status = False
         msg = (
             "The time_range parameter for "
@@ -178,7 +176,7 @@ def _check_time_range(time_range, now):
         _start = dateutil_parser.parse(time_range["start"])
         _end = dateutil_parser.parse(time_range["end"])
 
-        return bool(_start <= now <= _end)
+        return _start <= now <= _end
     else:
         log.error("Dateutil is required.")
         return False
@@ -295,16 +293,20 @@ def beacon(config):
                     if isinstance(_user, dict) and "time_range" in _user:
                         if _check_time_range(_user["time_range"], now):
                             ret.append(event)
-                    else:
-                        if defaults and "time_range" in defaults:
-                            if _check_time_range(defaults["time_range"], now):
-                                ret.append(event)
-                        else:
-                            ret.append(event)
-            else:
-                if defaults and "time_range" in defaults:
-                    if _check_time_range(defaults["time_range"], now):
+                    elif (
+                        defaults
+                        and "time_range" in defaults
+                        and _check_time_range(defaults["time_range"], now)
+                        or not defaults
+                        or "time_range" not in defaults
+                    ):
                         ret.append(event)
-                else:
-                    ret.append(event)
+            elif (
+                defaults
+                and "time_range" in defaults
+                and _check_time_range(defaults["time_range"], now)
+                or not defaults
+                or "time_range" not in defaults
+            ):
+                ret.append(event)
     return ret

@@ -51,9 +51,7 @@ def format_payload(enc, **kwargs):
     then a list of keyword args to generate the body of the load dict.
     """
     payload = {"enc": enc}
-    load = {}
-    for key in kwargs:
-        load[key] = kwargs[key]
+    load = {key: kwargs[key] for key in kwargs}
     payload["load"] = load
     return package(payload)
 
@@ -105,10 +103,7 @@ class Serial:
                 # that under Python 2 we can still work with older versions
                 # of msgpack.
                 if salt.utils.msgpack.version >= (0, 5, 2):
-                    if encoding is None:
-                        loads_kwargs["raw"] = True
-                    else:
-                        loads_kwargs["raw"] = False
+                    loads_kwargs["raw"] = encoding is None
                 else:
                     loads_kwargs["encoding"] = encoding
                 try:
@@ -219,10 +214,7 @@ class Serial:
                     return obj
                 # A value of an Integer object is limited from -(2^63) upto (2^64)-1 by MessagePack
                 # spec. Here we care only of JIDs that are positive integers.
-                if isinstance(obj, int) and obj >= pow(2, 64):
-                    return str(obj)
-                else:
-                    return obj
+                return str(obj) if isinstance(obj, int) and obj >= pow(2, 64) else obj
 
             msg = verylong_encoder(msg, set())
             return salt.utils.msgpack.packb(
@@ -299,24 +291,24 @@ class SREQ:
         """
         delete socket if you have it
         """
-        if hasattr(self, "_socket"):
-            if isinstance(self.poller.sockets, dict):
-                sockets = list(self.poller.sockets.keys())
-                for socket in sockets:
-                    log.trace("Unregistering socket: %s", socket)
-                    self.poller.unregister(socket)
-            else:
-                for socket in self.poller.sockets:
-                    log.trace("Unregistering socket: %s", socket)
-                    self.poller.unregister(socket[0])
-            del self._socket
+        if not hasattr(self, "_socket"):
+            return
+        if isinstance(self.poller.sockets, dict):
+            sockets = list(self.poller.sockets.keys())
+            for socket in sockets:
+                log.trace("Unregistering socket: %s", socket)
+                self.poller.unregister(socket)
+        else:
+            for socket in self.poller.sockets:
+                log.trace("Unregistering socket: %s", socket)
+                self.poller.unregister(socket[0])
+        del self._socket
 
     def send(self, enc, load, tries=1, timeout=60):
         """
         Takes two arguments, the encryption type and the base payload
         """
-        payload = {"enc": enc}
-        payload["load"] = load
+        payload = {"enc": enc, "load": load}
         pkg = self.serial.dumps(payload)
         self.socket.send(pkg)
         self.poller.register(self.socket, zmq.POLLIN)
@@ -336,9 +328,9 @@ class SREQ:
             if tried >= tries:
                 self.clear_socket()
                 raise SaltReqTimeoutError(
-                    "SaltReqTimeoutError: after {} seconds, ran {} "
-                    "tries".format(timeout * tried, tried)
+                    f"SaltReqTimeoutError: after {timeout * tried} seconds, ran {tried} tries"
                 )
+
         return self.serial.loads(self.socket.recv())
 
     def send_auto(self, payload, tries=1, timeout=60):

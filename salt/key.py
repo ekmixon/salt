@@ -106,8 +106,6 @@ class KeyCLI:
             return
 
         low = {}
-        skip_perm_errors = self.opts["eauth"] != ""
-
         if self.opts["eauth"]:
             if "token" in self.opts:
                 try:
@@ -125,16 +123,17 @@ class KeyCLI:
                 resolver = salt.auth.Resolver(self.opts)
                 res = resolver.cli(self.opts["eauth"])
                 if self.opts["mktoken"] and res:
-                    tok = resolver.token_cli(self.opts["eauth"], res)
-                    if tok:
+                    if tok := resolver.token_cli(self.opts["eauth"], res):
                         low["token"] = tok.get("token", "")
                 if not res:
                     log.error("Authentication failed")
                     return {}
-                low.update(res)
+                low |= res
                 low["eauth"] = self.opts["eauth"]
         else:
             low["user"] = salt.utils.user.get_specific_user()
+            skip_perm_errors = self.opts["eauth"] != ""
+
             low["key"] = salt.utils.master.get_master_key(
                 low["user"], self.opts, skip_perm_errors
             )
@@ -148,10 +147,13 @@ class KeyCLI:
             if argspec.args:
                 # Iterate in reverse order to ensure we get the correct default
                 # value for the positional argument.
-                for arg, default in itertools.zip_longest(
-                    reversed(argspec.args), reversed(argspec.defaults or ())
-                ):
-                    args.append(self.opts.get(arg, default))
+                args.extend(
+                    self.opts.get(arg, default)
+                    for arg, default in itertools.zip_longest(
+                        reversed(argspec.args), reversed(argspec.defaults or ())
+                    )
+                )
+
             # Reverse the args so that they are in the correct order
             args = args[::-1]
 
@@ -177,7 +179,7 @@ class KeyCLI:
 
         if cmd in ("accept", "reject", "delete") and args is None:
             args = self.opts.get("match_dict", {}).get("minions")
-        fstr = "key.{}".format(cmd)
+        fstr = f"key.{cmd}"
         fun = self.client.functions[fstr]
         args, kwargs = self._get_args_kwargs(fun, args)
 
@@ -188,7 +190,7 @@ class KeyCLI:
         }
 
         self._init_auth()
-        low.update(self.auth)
+        low |= self.auth
 
         # Execute the key request!
         ret = self.client.cmd_sync(low)
@@ -229,8 +231,8 @@ class KeyCLI:
         if len(statuses) == 1:
             stat_str = statuses[0]
         else:
-            stat_str = "{} or {}".format(", ".join(statuses[:-1]), statuses[-1])
-        msg = "The key glob '{}' does not match any {} keys.".format(match, stat_str)
+            stat_str = f'{", ".join(statuses[:-1])} or {statuses[-1]}'
+        msg = f"The key glob '{match}' does not match any {stat_str} keys."
         print(msg)
 
     def run(self):
@@ -252,21 +254,15 @@ class KeyCLI:
                 if not ret:
                     self._print_no_match(cmd, self.opts["match"])
                     return
-                print(
-                    "The following keys are going to be {}ed:".format(cmd.rstrip("e"))
-                )
+                print(f'The following keys are going to be {cmd.rstrip("e")}ed:')
                 salt.output.display_output(ret, "key", opts=self.opts)
 
                 if not self.opts.get("yes", False):
                     try:
                         if cmd.startswith("delete"):
-                            veri = input("Proceed? [N/y] ")
-                            if not veri:
-                                veri = "n"
+                            veri = input("Proceed? [N/y] ") or "n"
                         else:
-                            veri = input("Proceed? [n/Y] ")
-                            if not veri:
-                                veri = "y"
+                            veri = input("Proceed? [n/Y] ") or "y"
                     except KeyboardInterrupt:
                         raise SystemExit("\nExiting on CTRL-c")
                 # accept/reject/delete the same keys we're printed to the user
@@ -281,17 +277,13 @@ class KeyCLI:
                         ret = list_ret
                     for minions in ret.values():
                         for minion in minions:
-                            print(
-                                "Key for minion {} {}ed.".format(
-                                    minion, cmd.rstrip("e")
-                                )
-                            )
+                            print(f'Key for minion {minion} {cmd.rstrip("e")}ed.')
                 elif isinstance(ret, dict):
                     salt.output.display_output(ret, "key", opts=self.opts)
                 else:
                     salt.output.display_output({"return": ret}, "key", opts=self.opts)
         except salt.exceptions.SaltException as exc:
-            ret = "{}".format(exc)
+            ret = f"{exc}"
             if not self.opts.get("quiet", False):
                 salt.output.display_output(ret, "nested", self.opts)
         return ret
@@ -311,7 +303,7 @@ class Key:
         self.opts = opts
         kind = self.opts.get("__role", "")  # application kind
         if kind not in salt.utils.kinds.APPL_KINDS:
-            emsg = "Invalid application kind = '{}'.".format(kind)
+            emsg = f"Invalid application kind = '{kind}'."
             log.error(emsg)
             raise ValueError(emsg)
         self.event = salt.utils.event.get_event(
@@ -345,10 +337,7 @@ class Key:
             else:
                 keydir = self.opts["pki_dir"]
         if not keyname:
-            if "gen_keys" in self.opts:
-                keyname = self.opts["gen_keys"]
-            else:
-                keyname = "minion"
+            keyname = self.opts["gen_keys"] if "gen_keys" in self.opts else "minion"
         if not keysize:
             keysize = self.opts["keysize"]
         return keydir, keyname, keysize, user
@@ -361,7 +350,7 @@ class Key:
             keydir, keyname, keysize, user
         )
         salt.crypt.gen_keys(keydir, keyname, keysize, user, self.passphrase)
-        return salt.utils.crypt.pem_finger(os.path.join(keydir, keyname + ".pub"))
+        return salt.utils.crypt.pem_finger(os.path.join(keydir, f"{keyname}.pub"))
 
     def gen_signature(self, privkey, pubkey, sig_path):
         """
@@ -378,8 +367,7 @@ class Key:
         # check given pub-key
         if pub:
             if not os.path.isfile(pub):
-                return "Public-key {} does not exist".format(pub)
-        # default to master.pub
+                return f"Public-key {pub} does not exist"
         else:
             mpub = self.opts["pki_dir"] + "/" + "master.pub"
             if os.path.isfile(mpub):
@@ -388,37 +376,35 @@ class Key:
         # check given priv-key
         if priv:
             if not os.path.isfile(priv):
-                return "Private-key {} does not exist".format(priv)
-        # default to master_sign.pem
+                return f"Private-key {priv} does not exist"
         else:
             mpriv = self.opts["pki_dir"] + "/" + "master_sign.pem"
             if os.path.isfile(mpriv):
                 priv = mpriv
 
         if not priv:
-            if auto_create:
-                log.debug(
-                    "Generating new signing key-pair .%s.* in %s",
-                    self.opts["master_sign_key_name"],
-                    self.opts["pki_dir"],
-                )
-                salt.crypt.gen_keys(
-                    self.opts["pki_dir"],
-                    self.opts["master_sign_key_name"],
-                    keysize or self.opts["keysize"],
-                    self.opts.get("user"),
-                    self.passphrase,
-                )
-
-                priv = (
-                    self.opts["pki_dir"]
-                    + "/"
-                    + self.opts["master_sign_key_name"]
-                    + ".pem"
-                )
-            else:
+            if not auto_create:
                 return "No usable private-key found"
 
+            log.debug(
+                "Generating new signing key-pair .%s.* in %s",
+                self.opts["master_sign_key_name"],
+                self.opts["pki_dir"],
+            )
+            salt.crypt.gen_keys(
+                self.opts["pki_dir"],
+                self.opts["master_sign_key_name"],
+                keysize or self.opts["keysize"],
+                self.opts.get("user"),
+                self.passphrase,
+            )
+
+            priv = (
+                self.opts["pki_dir"]
+                + "/"
+                + self.opts["master_sign_key_name"]
+                + ".pem"
+            )
         if not pub:
             return "No usable public-key found"
 
@@ -431,7 +417,7 @@ class Key:
         else:
             signature_path = self.opts["pki_dir"]
 
-        sign_path = signature_path + "/" + self.opts["master_pubkey_signature"]
+        sign_path = f"{signature_path}/" + self.opts["master_pubkey_signature"]
 
         skey = get_key(self.opts)
         return skey.gen_signature(priv, pub, sign_path)
@@ -464,11 +450,10 @@ class Key:
                             )
                             continue
             cache = salt.cache.factory(self.opts)
-            clist = cache.list(self.ACC)
-            if clist:
+            if clist := cache.list(self.ACC):
                 for minion in clist:
                     if minion not in minions and minion not in preserve_minions:
-                        cache.flush("{}/{}".format(self.ACC, minion))
+                        cache.flush(f"{self.ACC}/{minion}")
 
     def check_master(self):
         """
@@ -477,18 +462,15 @@ class Key:
         :rtype: bool
         :return: Whether or not the master is running
         """
-        if not os.path.exists(os.path.join(self.opts["sock_dir"], "publish_pull.ipc")):
-            return False
-        return True
+        return bool(
+            os.path.exists(os.path.join(self.opts["sock_dir"], "publish_pull.ipc"))
+        )
 
     def name_match(self, match, full=False):
         """
         Accept a glob which to match the of a key and return the key's location
         """
-        if full:
-            matches = self.all_keys()
-        else:
-            matches = self.list_keys()
+        matches = self.all_keys() if full else self.list_keys()
         ret = {}
         if "," in match and isinstance(match, str):
             match = match.split(",")
@@ -500,11 +482,10 @@ class Key:
                             if status not in ret:
                                 ret[status] = []
                             ret[status].append(key)
-                else:
-                    if fnmatch.fnmatch(key, match):
-                        if status not in ret:
-                            ret[status] = []
-                        ret[status].append(key)
+                elif fnmatch.fnmatch(key, match):
+                    if status not in ret:
+                        ret[status] = []
+                    ret[status].append(key)
         return ret
 
     def dict_match(self, match_dict):
@@ -547,11 +528,12 @@ class Key:
             ret[os.path.basename(dir_)] = []
             try:
                 for fn_ in salt.utils.data.sorted_ignorecase(os.listdir(dir_)):
-                    if not fn_.startswith("."):
-                        if os.path.isfile(os.path.join(dir_, fn_)):
-                            ret[os.path.basename(dir_)].append(
-                                salt.utils.stringutils.to_unicode(fn_)
-                            )
+                    if not fn_.startswith(".") and os.path.isfile(
+                        os.path.join(dir_, fn_)
+                    ):
+                        ret[os.path.basename(dir_)].append(
+                            salt.utils.stringutils.to_unicode(fn_)
+                        )
             except OSError:
                 # key dir kind is not created yet, just skip
                 continue
@@ -574,27 +556,31 @@ class Key:
         if match.startswith("acc"):
             ret[os.path.basename(acc)] = []
             for fn_ in salt.utils.data.sorted_ignorecase(os.listdir(acc)):
-                if not fn_.startswith("."):
-                    if os.path.isfile(os.path.join(acc, fn_)):
-                        ret[os.path.basename(acc)].append(fn_)
+                if not fn_.startswith(".") and os.path.isfile(
+                    os.path.join(acc, fn_)
+                ):
+                    ret[os.path.basename(acc)].append(fn_)
         elif match.startswith("pre") or match.startswith("un"):
             ret[os.path.basename(pre)] = []
             for fn_ in salt.utils.data.sorted_ignorecase(os.listdir(pre)):
-                if not fn_.startswith("."):
-                    if os.path.isfile(os.path.join(pre, fn_)):
-                        ret[os.path.basename(pre)].append(fn_)
+                if not fn_.startswith(".") and os.path.isfile(
+                    os.path.join(pre, fn_)
+                ):
+                    ret[os.path.basename(pre)].append(fn_)
         elif match.startswith("rej"):
             ret[os.path.basename(rej)] = []
             for fn_ in salt.utils.data.sorted_ignorecase(os.listdir(rej)):
-                if not fn_.startswith("."):
-                    if os.path.isfile(os.path.join(rej, fn_)):
-                        ret[os.path.basename(rej)].append(fn_)
+                if not fn_.startswith(".") and os.path.isfile(
+                    os.path.join(rej, fn_)
+                ):
+                    ret[os.path.basename(rej)].append(fn_)
         elif match.startswith("den") and den is not None:
             ret[os.path.basename(den)] = []
             for fn_ in salt.utils.data.sorted_ignorecase(os.listdir(den)):
-                if not fn_.startswith("."):
-                    if os.path.isfile(os.path.join(den, fn_)):
-                        ret[os.path.basename(den)].append(fn_)
+                if not fn_.startswith(".") and os.path.isfile(
+                    os.path.join(den, fn_)
+                ):
+                    ret[os.path.basename(den)].append(fn_)
         elif match.startswith("all"):
             return self.all_keys()
         return ret
@@ -703,11 +689,9 @@ class Key:
                                     client.cmd_async(key, "saltutil.revoke_auth")
                                 except salt.exceptions.SaltClientError:
                                     print(
-                                        "Cannot contact Salt master. "
-                                        "Connection for {} will remain up until "
-                                        "master AES key is rotated or auth is revoked "
-                                        "with 'saltutil.revoke_auth'.".format(key)
+                                        f"Cannot contact Salt master. Connection for {key} will remain up until master AES key is rotated or auth is revoked with 'saltutil.revoke_auth'."
                                     )
+
                         os.remove(os.path.join(self.opts["pki_dir"], status, key))
                         eload = {"result": True, "act": "delete", "id": key}
                         self.event.fire_event(

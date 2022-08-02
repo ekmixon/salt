@@ -44,9 +44,7 @@ def __virtual__():
     """
     Requires newer pycrypto and pyOpenSSL
     """
-    if HAS_DEPS:
-        return True
-    return False
+    return bool(HAS_DEPS)
 
 
 def auth(username, password, **kwargs):

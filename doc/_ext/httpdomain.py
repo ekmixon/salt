@@ -134,7 +134,7 @@ http_sig_param_re = re.compile(
 
 def http_resource_anchor(method, path):
     path = re.sub(r"[<>:/]", "-", path)
-    return method.lower() + "-" + path
+    return f"{method.lower()}-{path}"
 
 
 class HTTPResource(ObjectDescription):
@@ -189,25 +189,24 @@ class HTTPResource(ObjectDescription):
     method = NotImplemented
 
     def handle_signature(self, sig, signode):
-        method = self.method.upper() + " "
+        method = f"{self.method.upper()} "
         signode += addnodes.desc_name(method, method)
         offset = 0
         for match in http_sig_param_re.finditer(sig):
             path = sig[offset : match.start()]
             signode += addnodes.desc_name(path, path)
             params = addnodes.desc_parameterlist()
-            typ = match.group("type")
-            if typ:
-                typ = typ + ": "
+            if typ := match.group("type"):
+                typ = f"{typ}: "
                 params += addnodes.desc_annotation(typ, typ)
             name = match.group("name")
             params += addnodes.desc_parameter(name, name)
             signode += params
             offset = match.end()
         if offset < len(sig):
-            path = sig[offset : len(sig)]
+            path = sig[offset:]
             signode += addnodes.desc_name(path, path)
-        fullname = self.method.upper() + " " + path
+        fullname = f"{self.method.upper()} {path}"
         signode["method"] = self.method
         signode["path"] = sig
         signode["fullname"] = fullname
@@ -309,8 +308,9 @@ def http_method_role(name, rawtext, text, lineno, inliner, options={}, content=[
     method = str(text).lower()
     if method not in DOCREFS:
         msg = inliner.reporter.error(
-            "%s is not valid HTTP method" % method, lineno=lineno
+            f"{method} is not valid HTTP method", lineno=lineno
         )
+
         prb = inliner.problematic(rawtext, rawtext, msg)
         return [prb], [msg]
     url = str(DOCREFS[method])
@@ -327,7 +327,7 @@ class HTTPXRefRole(XRefRole):
         if not target.startswith("/"):
             pass
         if not has_explicit_title:
-            title = self.method.upper() + " " + title
+            title = f"{self.method.upper()} {title}"
         return title, target
 
 
@@ -351,7 +351,7 @@ class HTTPIndex(Index):
         for prefix in self.ignore:
             if letters[: len(prefix)] == prefix:
                 return "/" + "/".join(letters[: len(prefix) + 1])
-        return "/%s" % (letters[0] if letters else "",)
+        return f'/{letters[0] if letters else ""}'
 
     def generate(self, docnames=None):
         content = {}
@@ -365,7 +365,7 @@ class HTTPIndex(Index):
             entries = content.setdefault(self.grouping_prefix(path), [])
             entries.append(
                 [
-                    method.upper() + " " + path,
+                    f"{method.upper()} {path}",
                     0,
                     info[0],
                     http_resource_anchor(method, path),
@@ -374,6 +374,7 @@ class HTTPIndex(Index):
                     info[1],
                 ]
             )
+
         content = sorted(content.items(), key=lambda k: k[0])
         return (content, True)
 
@@ -435,7 +436,7 @@ class HTTPDomain(Domain):
 
     @property
     def routes(self):
-        return dict((key, self.data[key]) for key in self.object_types)
+        return {key: self.data[key] for key in self.object_types}
 
     def clear_doc(self, docname):
         for typ, routes in self.routes.items():
@@ -450,7 +451,7 @@ class HTTPDomain(Domain):
             return
         else:
             anchor = http_resource_anchor(typ, target)
-            title = typ.upper() + " " + target
+            title = f"{typ.upper()} {target}"
             return make_refnode(builder, fromdocname, info[0], anchor, contnode, title)
 
     def get_objects(self):

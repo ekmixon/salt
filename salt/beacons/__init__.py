@@ -22,7 +22,7 @@ class Beacon:
         self.opts = opts
         self.functions = functions
         self.beacons = salt.loader.beacons(opts, functions)
-        self.interval_map = dict()
+        self.interval_map = {}
 
     def process(self, config, grains):
         """
@@ -71,16 +71,15 @@ class Beacon:
             else:
                 beacon_name = mod
             b_config[mod].append({"_beacon_name": mod})
-            fun_str = "{}.beacon".format(beacon_name)
-            validate_str = "{}.validate".format(beacon_name)
+            fun_str = f"{beacon_name}.beacon"
+            validate_str = f"{beacon_name}.validate"
             if fun_str in self.beacons:
                 runonce = self._determine_beacon_config(
                     current_beacon_config, "run_once"
                 )
-                interval = self._determine_beacon_config(
+                if interval := self._determine_beacon_config(
                     current_beacon_config, "interval"
-                )
-                if interval:
+                ):
                     b_config = self._trim_config(b_config, mod, "interval")
                     if not self._process_interval(mod, interval):
                         log.trace("Skipping beacon %s. Interval not reached.", mod)
@@ -101,7 +100,7 @@ class Beacon:
                         if re.match("state.*", job["fun"]):
                             is_running = True
                     if is_running:
-                        close_str = "{}.close".format(beacon_name)
+                        close_str = f"{beacon_name}.close"
                         if close_str in self.beacons:
                             log.info("Closing beacon %s. State run in progress.", mod)
                             self.beacons[close_str](b_config[mod])
@@ -127,7 +126,7 @@ class Beacon:
                 # Fire the beacon!
                 raw = self.beacons[fun_str](b_config[mod])
                 for data in raw:
-                    tag = "salt/beacon/{}/{}/".format(self.opts["id"], mod)
+                    tag = f'salt/beacon/{self.opts["id"]}/{mod}/'
                     if "tag" in data:
                         tag += data.pop("tag")
                     if "id" not in data:
@@ -154,11 +153,11 @@ class Beacon:
         Process a beacon configuration to determine its interval
         """
 
-        interval = False
-        if isinstance(current_beacon_config, dict):
-            interval = current_beacon_config.get(key, False)
-
-        return interval
+        return (
+            current_beacon_config.get(key, False)
+            if isinstance(current_beacon_config, dict)
+            else False
+        )
 
     def _process_interval(self, mod, interval):
         """
@@ -187,10 +186,7 @@ class Beacon:
         """
 
         indexes = [index for index, item in enumerate(beacon_config) if label in item]
-        if not indexes:
-            return -1
-        else:
-            return indexes[0]
+        return indexes[0] if indexes else -1
 
     def _remove_list_item(self, beacon_config, label):
         """
@@ -224,7 +220,7 @@ class Beacon:
             pillar_beacons = self.opts.get("pillar", {}).get("beacons", {})
             if not isinstance(pillar_beacons, dict):
                 raise ValueError("Beacons must be of type dict.")
-            beacons.update(pillar_beacons)
+            beacons |= pillar_beacons
         if include_opts:
             opts_beacons = self.opts.get("beacons", {})
             if not isinstance(opts_beacons, dict):
@@ -260,10 +256,11 @@ class Beacon:
         List the available beacons
         """
         _beacons = [
-            "{}".format(_beacon.replace(".beacon", ""))
+            f'{_beacon.replace(".beacon", "")}'
             for _beacon in self.beacons
             if ".beacon" in _beacon
         ]
+
 
         # Fire the complete event back along with the list of beacons
         with salt.utils.event.get_event("minion", opts=self.opts) as evt:
@@ -280,7 +277,7 @@ class Beacon:
         """
         beacon_name = next(item.get("beacon_module", name) for item in beacon_data)
 
-        validate_str = "{}.validate".format(beacon_name)
+        validate_str = f"{beacon_name}.validate"
         # Run the validate function if it's available,
         # otherwise there is a warning about it being missing
         if validate_str in self.beacons:
@@ -288,10 +285,8 @@ class Beacon:
                 del beacon_data["enabled"]
             valid, vcomment = self.beacons[validate_str](beacon_data)
         else:
-            vcomment = (
-                "Beacon {} does not have a validate"
-                " function, skipping validation.".format(beacon_name)
-            )
+            vcomment = f"Beacon {beacon_name} does not have a validate function, skipping validation."
+
             valid = True
 
         # Fire the complete event back along with the list of beacons
@@ -308,20 +303,16 @@ class Beacon:
         Add a beacon item
         """
 
-        data = {}
-        data[name] = beacon_data
-
+        data = {name: beacon_data}
         if name in self._get_beacons(include_opts=False):
-            comment = (
-                "Cannot update beacon item {}, "
-                "because it is configured in pillar.".format(name)
-            )
+            comment = f"Cannot update beacon item {name}, because it is configured in pillar."
+
             complete = False
         else:
             if name in self.opts["beacons"]:
-                comment = "Updating settings for beacon " "item: {}".format(name)
+                comment = f"Updating settings for beacon item: {name}"
             else:
-                comment = "Added new beacon item: {}".format(name)
+                comment = f"Added new beacon item: {name}"
             complete = True
             self.opts["beacons"].update(data)
 
@@ -343,17 +334,12 @@ class Beacon:
         Modify a beacon item
         """
 
-        data = {}
-        data[name] = beacon_data
-
+        data = {name: beacon_data}
         if name in self._get_beacons(include_opts=False):
-            comment = (
-                "Cannot modify beacon item {}, "
-                "it is configured in pillar.".format(name)
-            )
+            comment = f"Cannot modify beacon item {name}, it is configured in pillar."
             complete = False
         else:
-            comment = "Updating settings for beacon " "item: {}".format(name)
+            comment = f"Updating settings for beacon item: {name}"
             complete = True
             self.opts["beacons"].update(data)
 
@@ -375,17 +361,14 @@ class Beacon:
         """
 
         if name in self._get_beacons(include_opts=False):
-            comment = (
-                "Cannot delete beacon item {}, "
-                "it is configured in pillar.".format(name)
-            )
+            comment = f"Cannot delete beacon item {name}, it is configured in pillar."
             complete = False
         else:
             if name in self.opts["beacons"]:
                 del self.opts["beacons"][name]
-                comment = "Deleting beacon item: {}".format(name)
+                comment = f"Deleting beacon item: {name}"
             else:
-                comment = "Beacon item {} not found.".format(name)
+                comment = f"Beacon item {name} not found."
             complete = True
 
         # Fire the complete event back along with updated list of beacons
@@ -439,14 +422,11 @@ class Beacon:
         """
 
         if name in self._get_beacons(include_opts=False):
-            comment = (
-                "Cannot enable beacon item {}, "
-                "it is configured in pillar.".format(name)
-            )
+            comment = f"Cannot enable beacon item {name}, it is configured in pillar."
             complete = False
         else:
             self._update_enabled(name, True)
-            comment = "Enabling beacon item {}".format(name)
+            comment = f"Enabling beacon item {name}"
             complete = True
 
         # Fire the complete event back along with updated list of beacons
@@ -468,14 +448,11 @@ class Beacon:
         """
 
         if name in self._get_beacons(include_opts=False):
-            comment = (
-                "Cannot disable beacon item {}, "
-                "it is configured in pillar.".format(name)
-            )
+            comment = f"Cannot disable beacon item {name}, it is configured in pillar."
             complete = False
         else:
             self._update_enabled(name, False)
-            comment = "Disabling beacon item {}".format(name)
+            comment = f"Disabling beacon item {name}"
             complete = True
 
         # Fire the complete event back along with updated list of beacons

@@ -119,7 +119,4 @@ def auth(username, password):
     cur = conn.cursor()
     cur.execute(_info["auth_sql"].format(username, password))
 
-    if cur.rowcount == 1:
-        return True
-
-    return False
+    return cur.rowcount == 1

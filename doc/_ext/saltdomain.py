@@ -52,7 +52,7 @@ class LiterateCoding(Directive):
             comment; False designates code.
         """
         comment_char = "#"  # TODO: move this into a directive option
-        comment = re.compile(r"^\s*{}[ \n]".format(comment_char))
+        comment = re.compile(f"^\s*{comment_char}[ \n]")
         section_test = lambda val: bool(comment.match(val))
 
         sections = []
@@ -135,7 +135,7 @@ class LiterateFormula(LiterateCoding):
         formulas_dirs = config.formulas_dirs
         fpath = sls_path.replace(".", "/")
 
-        name_options = ("{}.sls".format(fpath), os.path.join(fpath, "init.sls"))
+        name_options = f"{fpath}.sls", os.path.join(fpath, "init.sls")
 
         paths = [
             os.path.join(fdir, fname)
@@ -150,7 +150,7 @@ class LiterateFormula(LiterateCoding):
             except OSError:
                 pass
 
-        raise OSError("Could not find sls file '{}'".format(sls_path))
+        raise OSError(f"Could not find sls file '{sls_path}'")
 
 
 class CurrentFormula(Directive):
@@ -164,10 +164,7 @@ class CurrentFormula(Directive):
     def run(self):
         env = self.state.document.settings.env
         modname = self.arguments[0].strip()
-        if modname == "None":
-            env.temp_data["salt:formula"] = None
-        else:
-            env.temp_data["salt:formula"] = modname
+        env.temp_data["salt:formula"] = None if modname == "None" else modname
         return []
 
 
@@ -192,13 +189,14 @@ class Formula(Directive):
             "deprecated" in self.options,
         )
 
-        targetnode = nodes.target("", "", ids=["module-" + formname], ismod=True)
+        targetnode = nodes.target("", "", ids=[f"module-{formname}"], ismod=True)
         self.state.document.note_explicit_target(targetnode)
 
-        indextext = "{}-formula)".format(formname)
+        indextext = f"{formname}-formula)"
         inode = addnodes.index(
-            entries=[("single", indextext, "module-" + formname, "")]
+            entries=[("single", indextext, f"module-{formname}", "")]
         )
+
 
         return [targetnode, inode]
 
@@ -215,15 +213,16 @@ class State(Directive):
         if "noindex" in self.options:
             return []
 
-        targetnode = nodes.target("", "", ids=["module-" + statename], ismod=True)
+        targetnode = nodes.target("", "", ids=[f"module-{statename}"], ismod=True)
         self.state.document.note_explicit_target(targetnode)
 
         formula = env.temp_data.get("salt:formula")
 
         indextext = "{1} ({0}-formula)".format(formula, statename)
         inode = addnodes.index(
-            entries=[("single", indextext, "module-{}".format(statename), ""),]
+            entries=[("single", indextext, f"module-{statename}", "")]
         )
+
 
         return [targetnode, inode]
 

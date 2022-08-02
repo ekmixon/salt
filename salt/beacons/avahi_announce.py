@@ -55,13 +55,12 @@ def __virtual__():
             return __virtualname__
         return (
             False,
-            "The {} beacon cannot be loaded. The "
-            "'python-dbus' dependency is missing.".format(__virtualname__),
+            f"The {__virtualname__} beacon cannot be loaded. The 'python-dbus' dependency is missing.",
         )
+
     return (
         False,
-        "The {} beacon cannot be loaded. The "
-        "'python-avahi' dependency is missing.".format(__virtualname__),
+        f"The {__virtualname__} beacon cannot be loaded. The 'python-avahi' dependency is missing.",
     )
 
 
@@ -75,7 +74,7 @@ def validate(config):
     if not isinstance(config, list):
         return False, ("Configuration for avahi_announce beacon must be a list.")
 
-    elif not all(x in _config for x in ("servicetype", "port", "txt")):
+    elif any(x not in _config for x in ("servicetype", "port", "txt")):
         return (
             False,
             (
@@ -100,10 +99,11 @@ def _enforce_txt_record_maxlen(key, value):
              appended to indicate that the entire value is not present.
     """
     # Add 1 for '=' separator between key and value
-    if len(key) + len(value) + 1 > 255:
-        # 255 - 3 ('...') - 1 ('=') = 251
-        return value[: 251 - len(key)] + "..."
-    return value
+    return (
+        f"{value[: 251 - len(key)]}..."
+        if len(key) + len(value) > 254
+        else value
+    )
 
 
 def beacon(config):
@@ -185,7 +185,7 @@ def beacon(config):
             changes["ipv6"] = __grains__.get("ipv6", [])
 
     for item in _config["txt"]:
-        changes_key = "txt." + salt.utils.stringutils.to_unicode(item)
+        changes_key = f"txt.{salt.utils.stringutils.to_unicode(item)}"
         if _config["txt"][item].startswith("grains."):
             grain = _config["txt"][item][7:]
             grain_index = None

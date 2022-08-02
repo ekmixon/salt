@@ -119,15 +119,15 @@ def resolve_dns(opts, fallback=True):
     Resolves the master_ip and master_uri options
     """
     ret = {}
-    check_dns = True
-    if opts.get("file_client", "remote") == "local" and not opts.get(
-        "use_master_when_local", False
-    ):
-        check_dns = False
+    check_dns = bool(
+        opts.get("file_client", "remote") != "local"
+        or opts.get("use_master_when_local", False)
+    )
+
     # Since salt.log is imported below, salt.utils.network needs to be imported here as well
     import salt.utils.network
 
-    if check_dns is True:
+    if check_dns:
         try:
             if opts["master"] == "":
                 raise SaltSystemExit
@@ -141,57 +141,52 @@ def resolve_dns(opts, fallback=True):
                     if retry_dns_count is not None:
                         if retry_dns_count == 0:
                             raise SaltMasterUnresolvableError
-                        retry_dns_count -= 1
+                        else:
+                            retry_dns_count -= 1
                     import salt.log
 
-                    msg = (
-                        "Master hostname: '{}' not found or not responsive. "
-                        "Retrying in {} seconds"
-                    ).format(opts["master"], opts["retry_dns"])
+                    msg = f"""Master hostname: '{opts["master"]}' not found or not responsive. Retrying in {opts["retry_dns"]} seconds"""
+
                     if salt.log.setup.is_console_configured():
                         log.error(msg)
                     else:
-                        print("WARNING: {}".format(msg))
+                        print(f"WARNING: {msg}")
                     time.sleep(opts["retry_dns"])
-                    try:
+                    with contextlib.suppress(SaltClientError):
                         ret["master_ip"] = salt.utils.network.dns_check(
                             opts["master"], int(opts["master_port"]), True, opts["ipv6"]
                         )
                         break
-                    except SaltClientError:
-                        pass
+            elif fallback:
+                ret["master_ip"] = "127.0.0.1"
             else:
-                if fallback:
-                    ret["master_ip"] = "127.0.0.1"
-                else:
-                    raise
+                raise
         except SaltSystemExit:
             unknown_str = "unknown address"
             master = opts.get("master", unknown_str)
             if master == "":
                 master = unknown_str
             if opts.get("__role") == "syndic":
-                err = (
-                    "Master address: '{}' could not be resolved. Invalid or unresolveable address. "
-                    "Set 'syndic_master' value in minion config.".format(master)
-                )
+                err = f"Master address: '{master}' could not be resolved. Invalid or unresolveable address. Set 'syndic_master' value in minion config."
+
             else:
-                err = (
-                    "Master address: '{}' could not be resolved. Invalid or unresolveable address. "
-                    "Set 'master' value in minion config.".format(master)
-                )
+                err = f"Master address: '{master}' could not be resolved. Invalid or unresolveable address. Set 'master' value in minion config."
+
             log.error(err)
             raise SaltSystemExit(code=42, msg=err)
     else:
         ret["master_ip"] = "127.0.0.1"
 
-    if "master_ip" in ret and "master_ip" in opts:
-        if ret["master_ip"] != opts["master_ip"]:
-            log.warning(
-                "Master ip address changed from %s to %s",
-                opts["master_ip"],
-                ret["master_ip"],
-            )
+    if (
+        "master_ip" in ret
+        and "master_ip" in opts
+        and ret["master_ip"] != opts["master_ip"]
+    ):
+        log.warning(
+            "Master ip address changed from %s to %s",
+            opts["master_ip"],
+            ret["master_ip"],
+        )
     if opts["source_interface_name"]:
         log.trace("Custom source interface required: %s", opts["source_interface_name"])
         interfaces = salt.utils.network.interfaces()
@@ -200,10 +195,11 @@ def resolve_dns(opts, fallback=True):
         if opts["source_interface_name"] in interfaces:
             if interfaces[opts["source_interface_name"]]["up"]:
                 addrs = (
-                    interfaces[opts["source_interface_name"]]["inet"]
-                    if not opts["ipv6"]
-                    else interfaces[opts["source_interface_name"]]["inet6"]
+                    interfaces[opts["source_interface_name"]]["inet6"]
+                    if opts["ipv6"]
+                    else interfaces[opts["source_interface_name"]]["inet"]
                 )
+
                 ret["source_ip"] = addrs[0]["address"]
                 log.debug("Using %s as source IP address", ret["source_ip"])
             else:
@@ -261,7 +257,7 @@ def prep_ip_port(opts):
             raise SaltClientError(exc)
         ret = {"master": host}
         if port:
-            ret.update({"master_port": port})
+            ret["master_port"] = port
 
     return ret
 
@@ -285,11 +281,7 @@ def get_proc_dir(cachedir, **kwargs):
     fn_ = os.path.join(cachedir, "proc")
     mode = kwargs.pop("mode", None)
 
-    if mode is None:
-        mode = {}
-    else:
-        mode = {"mode": mode}
-
+    mode = {} if mode is None else {"mode": mode}
     if not os.path.isdir(fn_):
         # proc_dir is not present, create it with mode settings
         os.makedirs(fn_, **mode)
@@ -340,26 +332,21 @@ def load_args_and_kwargs(func, args, data=None, ignore_invalid=False):
                     # **kwargs not in argspec and parsed argument name not in
                     # list of positional arguments. This keyword argument is
                     # invalid.
-                    invalid_kwargs.append("{}={}".format(key, val))
-            continue
-
-        else:
-            string_kwarg = salt.utils.args.parse_input([arg], condition=False)[
-                1
-            ]  # pylint: disable=W0632
-            if string_kwarg:
-                if argspec.keywords or next(iter(string_kwarg.keys())) in argspec.args:
+                    invalid_kwargs.append(f"{key}={val}")
+        elif string_kwarg := salt.utils.args.parse_input([arg], condition=False)[
+            1
+        ]:
+            if argspec.keywords or next(iter(string_kwarg.keys())) in argspec.args:
                     # Function supports **kwargs or is a positional argument to
                     # the function.
-                    _kwargs.update(string_kwarg)
-                else:
+                _kwargs |= string_kwarg
+            else:
                     # **kwargs not in argspec and parsed argument name not in
                     # list of positional arguments. This keyword argument is
                     # invalid.
-                    for key, val in string_kwarg.items():
-                        invalid_kwargs.append("{}={}".format(key, val))
-            else:
-                _args.append(arg)
+                invalid_kwargs.extend(f"{key}={val}" for key, val in string_kwarg.items())
+        else:
+            _args.append(arg)
 
     if invalid_kwargs and not ignore_invalid:
         salt.utils.args.invalid_kwargs(invalid_kwargs)
@@ -367,7 +354,7 @@ def load_args_and_kwargs(func, args, data=None, ignore_invalid=False):
     if argspec.keywords and isinstance(data, dict):
         # this function accepts **kwargs, pack in the publish data
         for key, val in data.items():
-            _kwargs["__pub_{}".format(key)] = val
+            _kwargs[f"__pub_{key}"] = val
 
     return _args, _kwargs
 
@@ -377,27 +364,28 @@ def eval_master_func(opts):
     Evaluate master function if master type is 'func'
     and save it result in opts['master']
     """
-    if "__master_func_evaluated" not in opts:
-        # split module and function and try loading the module
-        mod_fun = opts["master"]
-        mod, fun = mod_fun.split(".")
-        try:
-            master_mod = salt.loader.raw_mod(opts, mod, fun)
-            if not master_mod:
-                raise KeyError
-            # we take whatever the module returns as master address
-            opts["master"] = master_mod[mod_fun]()
-            # Check for valid types
-            if not isinstance(opts["master"], ((str,), list)):
-                raise TypeError
-            opts["__master_func_evaluated"] = True
-        except KeyError:
-            log.error("Failed to load module %s", mod_fun)
-            sys.exit(salt.defaults.exitcodes.EX_GENERIC)
-        except TypeError:
-            log.error("%s returned from %s is not a string", opts["master"], mod_fun)
-            sys.exit(salt.defaults.exitcodes.EX_GENERIC)
-        log.info("Evaluated master from module: %s", mod_fun)
+    if "__master_func_evaluated" in opts:
+        return
+    # split module and function and try loading the module
+    mod_fun = opts["master"]
+    mod, fun = mod_fun.split(".")
+    try:
+        master_mod = salt.loader.raw_mod(opts, mod, fun)
+        if not master_mod:
+            raise KeyError
+        # we take whatever the module returns as master address
+        opts["master"] = master_mod[mod_fun]()
+        # Check for valid types
+        if not isinstance(opts["master"], ((str,), list)):
+            raise TypeError
+        opts["__master_func_evaluated"] = True
+    except KeyError:
+        log.error("Failed to load module %s", mod_fun)
+        sys.exit(salt.defaults.exitcodes.EX_GENERIC)
+    except TypeError:
+        log.error("%s returned from %s is not a string", opts["master"], mod_fun)
+        sys.exit(salt.defaults.exitcodes.EX_GENERIC)
+    log.info("Evaluated master from module: %s", mod_fun)
 
 
 def master_event(type, master=None):
@@ -412,7 +400,7 @@ def master_event(type, master=None):
     }
 
     if type == "alive" and master is not None:
-        return "{}_{}".format(event_map.get(type), master)
+        return f"{event_map.get(type)}_{master}"
 
     return event_map.get(type, None)
 
@@ -505,10 +493,9 @@ class MinionBase:
         the pillar or grains changed
         """
         if "config.merge" in functions:
-            b_conf = functions["config.merge"](
+            if b_conf := functions["config.merge"](
                 "beacons", self.opts["beacons"], omit_opts=True
-            )
-            if b_conf:
+            ):
                 return self.beacons.process(
                     b_conf, self.opts["grains"]
                 )  # pylint: disable=no-member
@@ -657,6 +644,7 @@ class MinionBase:
         tries = opts.get("master_tries", 1)
         attempts = 0
 
+        pub_channel = None
         # if we have a list of masters, loop through them and be
         # happy with the first one that allows us to connect
         if isinstance(opts["master"], list):
@@ -697,7 +685,6 @@ class MinionBase:
                 log.error(msg)
                 raise SaltClientError(msg)
 
-            pub_channel = None
             while True:
                 if attempts != 0:
                     # Give up a little time between connection attempts
@@ -772,13 +759,11 @@ class MinionBase:
                     self.connected = True
                     raise salt.ext.tornado.gen.Return((opts["master"], pub_channel))
 
-        # single master sign in
         else:
             if opts["random_master"]:
                 log.warning(
                     "random_master is True but there is only one master specified. Ignoring."
                 )
-            pub_channel = None
             while True:
                 if attempts != 0:
                     # Give up a little time between connection attempts

@@ -65,9 +65,7 @@ class Hashabledict(dict):
 
 
 def __virtual__():
-    if HAS_PYROUTE2:
-        return __virtual_name__
-    return False
+    return __virtual_name__ if HAS_PYROUTE2 else False
 
 
 def validate(config):
@@ -76,32 +74,31 @@ def validate(config):
     """
     if not isinstance(config, list):
         return False, ("Configuration for network_settings beacon must be a list.")
-    else:
-        _config = {}
-        list(map(_config.update, config))
+    _config = {}
+    list(map(_config.update, config))
 
-        interfaces = _config.get("interfaces", {})
-        if isinstance(interfaces, list):
-            # Old syntax
+    interfaces = _config.get("interfaces", {})
+    if isinstance(interfaces, list):
+        # Old syntax
+        return (
+            False,
+            (
+                "interfaces section for network_settings beacon"
+                " must be a dictionary."
+            ),
+        )
+
+    for item in interfaces:
+        if not isinstance(_config["interfaces"][item], dict):
             return (
                 False,
                 (
-                    "interfaces section for network_settings beacon"
+                    "Interface attributes for network_settings beacon"
                     " must be a dictionary."
                 ),
             )
-
-        for item in interfaces:
-            if not isinstance(_config["interfaces"][item], dict):
-                return (
-                    False,
-                    (
-                        "Interface attributes for network_settings beacon"
-                        " must be a dictionary."
-                    ),
-                )
-            if not all(j in ATTRS for j in _config["interfaces"][item]):
-                return False, ("Invalid attributes in beacon configuration.")
+        if any(j not in ATTRS for j in _config["interfaces"][item]):
+            return False, ("Invalid attributes in beacon configuration.")
     return True, "Valid beacon configuration"
 
 
@@ -195,8 +192,7 @@ def beacon(config):
         else:
             # No direct match, try with * wildcard regexp
             for interface_stat in _stats:
-                match = re.search(interface_config, interface_stat)
-                if match:
+                if match := re.search(interface_config, interface_stat):
                     interfaces.append(interface_stat)
                     expanded_config["interfaces"][interface_stat] = _config[
                         "interfaces"
@@ -221,7 +217,7 @@ def beacon(config):
             LAST_STATS[interface] = _stats[interface]
 
             for item in _diff_stats:
-                _diff_stats_dict.update(item)
+                _diff_stats_dict |= item
             for attr in interface_config:
                 if attr in _diff_stats_dict:
                     config_value = None

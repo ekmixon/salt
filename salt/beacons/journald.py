@@ -19,9 +19,7 @@ __virtualname__ = "journald"
 
 
 def __virtual__():
-    if HAS_SYSTEMD:
-        return __virtualname__
-    return False
+    return __virtualname__ if HAS_SYSTEMD else False
 
 
 def _get_journal():
@@ -41,23 +39,23 @@ def validate(config):
     """
     Validate the beacon configuration
     """
-    # Configuration for journald beacon should be a list of dicts
     if not isinstance(config, list):
         return (False, "Configuration for journald beacon must be a list.")
-    else:
-        _config = {}
-        list(map(_config.update, config))
+    _config = {}
+    list(map(_config.update, config))
 
-        for name in _config.get("services", {}):
-            if not isinstance(_config["services"][name], dict):
-                return (
-                    False,
-                    (
-                        "Services configuration for journald beacon "
-                        "must be a list of dictionaries."
-                    ),
-                )
-    return True, "Valid beacon configuration"
+    return next(
+        (
+            (
+                False,
+                "Services configuration for journald beacon "
+                "must be a list of dictionaries.",
+            )
+            for name in _config.get("services", {})
+            if not isinstance(_config["services"][name], dict)
+        ),
+        (True, "Valid beacon configuration"),
+    )
 
 
 def beacon(config):
@@ -92,9 +90,8 @@ def beacon(config):
             for key in _config["services"][name]:
                 if isinstance(key, str):
                     key = salt.utils.data.decode(key)
-                if key in cur:
-                    if _config["services"][name][key] == cur[key]:
-                        n_flag += 1
+                if key in cur and _config["services"][name][key] == cur[key]:
+                    n_flag += 1
             if n_flag == len(_config["services"][name]):
                 # Match!
                 sub = salt.utils.data.simple_types_filter(cur)

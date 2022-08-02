@@ -18,17 +18,18 @@ USE_VENDORED_TORNADO = True
 
 class TornadoImporter:
     def find_module(self, module_name, package_path=None):
-        if USE_VENDORED_TORNADO:
-            if module_name.startswith("tornado"):
-                return self
-        else:
-            if module_name.startswith("salt.ext.tornado"):
-                return self
+        if (
+            USE_VENDORED_TORNADO
+            and module_name.startswith("tornado")
+            or not USE_VENDORED_TORNADO
+            and module_name.startswith("salt.ext.tornado")
+        ):
+            return self
         return None
 
     def load_module(self, name):
         if USE_VENDORED_TORNADO:
-            mod = importlib.import_module("salt.ext.{}".format(name))
+            mod = importlib.import_module(f"salt.ext.{name}")
         else:
             # Remove 'salt.ext.' from the module
             mod = importlib.import_module(name[9:])
@@ -87,22 +88,22 @@ def __define_global_system_encoding_variable__():
 
         # This is now garbage collectable
         del locale
-        if not encoding:
-            # This is most likely ascii which is not the best but we were
-            # unable to find a better encoding. If this fails, we fall all
-            # the way back to ascii
-            encoding = sys.getdefaultencoding()
-        if not encoding:
-            if sys.platform.startswith("darwin"):
-                # Mac OS X uses UTF-8
-                encoding = "utf-8"
-            elif sys.platform.startswith("win"):
-                # Windows uses a configurable encoding; on Windows, Python uses the name “mbcs”
-                # to refer to whatever the currently configured encoding is.
-                encoding = "mbcs"
-            else:
-                # On linux default to ascii as a last resort
-                encoding = "ascii"
+    if not encoding:
+        # This is most likely ascii which is not the best but we were
+        # unable to find a better encoding. If this fails, we fall all
+        # the way back to ascii
+        encoding = sys.getdefaultencoding()
+    if not encoding:
+        if sys.platform.startswith("darwin"):
+            # Mac OS X uses UTF-8
+            encoding = "utf-8"
+        elif sys.platform.startswith("win"):
+            # Windows uses a configurable encoding; on Windows, Python uses the name “mbcs”
+            # to refer to whatever the currently configured encoding is.
+            encoding = "mbcs"
+        else:
+            # On linux default to ascii as a last resort
+            encoding = "ascii"
 
     import builtins
 

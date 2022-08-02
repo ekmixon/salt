@@ -21,25 +21,20 @@ __virtualname__ = "memusage"
 
 
 def __virtual__():
-    if HAS_PSUTIL is False:
-        return False
-    else:
-        return __virtualname__
+    return False if HAS_PSUTIL is False else __virtualname__
 
 
 def validate(config):
     """
     Validate the beacon configuration
     """
-    # Configuration for memusage beacon should be a list of dicts
     if not isinstance(config, list):
         return False, ("Configuration for memusage beacon must be a list.")
-    else:
-        _config = {}
-        list(map(_config.update, config))
+    _config = {}
+    list(map(_config.update, config))
 
-        if "percent" not in _config:
-            return False, ("Configuration for memusage beacon requires percent.")
+    if "percent" not in _config:
+        return False, ("Configuration for memusage beacon requires percent.")
 
     return True, "Valid beacon configuration"
 

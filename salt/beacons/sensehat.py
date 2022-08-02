@@ -22,15 +22,13 @@ def validate(config):
     """
     Validate the beacon configuration
     """
-    # Configuration for sensehat beacon should be a list
     if not isinstance(config, list):
         return False, ("Configuration for sensehat beacon must be a list.")
-    else:
-        _config = {}
-        list(map(_config.update, config))
+    _config = {}
+    list(map(_config.update, config))
 
-        if "sensors" not in _config:
-            return False, ("Configuration for sensehat beacon requires sensors.")
+    if "sensors" not in _config:
+        return False, ("Configuration for sensehat beacon requires sensors.")
 
     return True, "Valid beacon configuration"
 
@@ -66,7 +64,7 @@ def beacon(config):
     list(map(_config.update, config))
 
     for sensor in _config.get("sensors", {}):
-        sensor_function = "sensehat.get_{}".format(sensor)
+        sensor_function = f"sensehat.get_{sensor}"
         if sensor_function not in __salt__:
             log.error("No sensor for meassuring %s. Skipping.", sensor)
             continue
@@ -88,6 +86,6 @@ def beacon(config):
 
         current_value = __salt__[sensor_function]()
         if not sensor_min <= current_value <= sensor_max:
-            ret.append({"tag": "sensehat/{}".format(sensor), sensor: current_value})
+            ret.append({"tag": f"sensehat/{sensor}", sensor: current_value})
 
     return ret

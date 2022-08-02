@@ -67,10 +67,8 @@ def decode_dict_keys_to_str(src):
     output = {}
     for key, val in src.items():
         if isinstance(key, bytes):
-            try:
+            with contextlib.suppress(UnicodeError):
                 key = key.decode()
-            except UnicodeError:
-                pass
         output[key] = val
     return output
 
@@ -103,7 +101,7 @@ class Client:
         Make sure that this path is intended for the salt master and trim it
         """
         if not path.startswith("salt://"):
-            raise MinionError("Unsupported path: {}".format(path))
+            raise MinionError(f"Unsupported path: {path}")
         file_path, saltenv = salt.utils.url.parse(path)
         return file_path
 
@@ -111,11 +109,7 @@ class Client:
         """
         Helper util to return a list of files in a directory
         """
-        if os.path.isdir(dest):
-            destdir = dest
-        else:
-            destdir = os.path.dirname(dest)
-
+        destdir = dest if os.path.isdir(dest) else os.path.dirname(dest)
         filelist = set()
 
         for root, dirs, files in salt.utils.path.os_walk(destdir, followlinks=True):
@@ -192,23 +186,20 @@ class Client:
         Download a list of files stored on the master and put them in the
         minion file cache
         """
-        ret = []
         if isinstance(paths, str):
             paths = paths.split(",")
-        for path in paths:
-            ret.append(self.cache_file(path, saltenv, cachedir=cachedir))
-        return ret
+        return [self.cache_file(path, saltenv, cachedir=cachedir) for path in paths]
 
     def cache_master(self, saltenv="base", cachedir=None):
         """
         Download and cache all files on a master in a specified environment
         """
-        ret = []
-        for path in self.file_list(saltenv):
-            ret.append(
-                self.cache_file(salt.utils.url.create(path), saltenv, cachedir=cachedir)
+        return [
+            self.cache_file(
+                salt.utils.url.create(path), saltenv, cachedir=cachedir
             )
-        return ret
+            for path in self.file_list(saltenv)
+        ]
 
     def cache_dir(
         self,
@@ -229,22 +220,24 @@ class Client:
         # '/' explicitly because the master (that's generating the
         # list of files) only runs on POSIX
         if not path.endswith("/"):
-            path = path + "/"
+            path = f"{path}/"
 
         log.info("Caching directory '%s' for environment '%s'", path, saltenv)
         # go through the list of all files finding ones that are in
         # the target directory and caching them
         for fn_ in self.file_list(saltenv):
             fn_ = salt.utils.data.decode(fn_)
-            if fn_.strip() and fn_.startswith(path):
-                if salt.utils.stringutils.check_include_exclude(
+            if (
+                fn_.strip()
+                and fn_.startswith(path)
+                and salt.utils.stringutils.check_include_exclude(
                     fn_, include_pat, exclude_pat
+                )
+            ):
+                if fn_ := self.cache_file(
+                    salt.utils.url.create(fn_), saltenv, cachedir=cachedir
                 ):
-                    fn_ = self.cache_file(
-                        salt.utils.url.create(fn_), saltenv, cachedir=cachedir
-                    )
-                    if fn_:
-                        ret.append(fn_)
+                    ret.append(fn_)
 
         if include_empty:
             # Break up the path into a list containing the bottom-level
@@ -262,7 +255,7 @@ class Client:
             for fn_ in self.file_list_emptydirs(saltenv):
                 fn_ = salt.utils.data.decode(fn_)
                 if fn_.startswith(path):
-                    minion_dir = "{}/{}".format(dest, fn_)
+                    minion_dir = f"{dest}/{fn_}"
                     if not os.path.isdir(minion_dir):
                         os.makedirs(minion_dir)
                     ret.append(minion_dir)
@@ -320,7 +313,7 @@ class Client:
             if senv:
                 saltenv = senv
 
-        escaped = True if salt.utils.url.is_escaped(path) else False
+        escaped = bool(salt.utils.url.is_escaped(path))
 
         # also strip escape character '|'
         localsfilesdest = os.path.join(
@@ -387,11 +380,10 @@ class Client:
         """
         if "." in sls:
             sls = sls.replace(".", "/")
-        sls_url = salt.utils.url.create(sls + ".sls")
-        init_url = salt.utils.url.create(sls + "/init.sls")
+        sls_url = salt.utils.url.create(f"{sls}.sls")
+        init_url = salt.utils.url.create(f"{sls}/init.sls")
         for path in [sls_url, init_url]:
-            dest = self.cache_file(path, saltenv, cachedir=cachedir)
-            if dest:
+            if dest := self.cache_file(path, saltenv, cachedir=cachedir):
                 return {"source": path, "dest": dest}
         return {}
 
@@ -405,13 +397,7 @@ class Client:
         # Break up the path into a list containing the bottom-level directory
         # (the one being recursively copied) and the directories preceding it
         separated = path.rsplit("/", 1)
-        if len(separated) != 2:
-            # No slashes in path. (This means all files in saltenv will be
-            # copied)
-            prefix = ""
-        else:
-            prefix = separated[0]
-
+        prefix = "" if len(separated) != 2 else separated[0]
         # Copy files from master
         for fn_ in self.file_list(saltenv, prefix=path):
             # Prevent files in "salt://foobar/" (or salt://foo.sh) from
@@ -427,14 +413,15 @@ class Client:
             ret.append(
                 self.get_file(
                     salt.utils.url.create(fn_),
-                    "{}/{}".format(dest, minion_relpath),
+                    f"{dest}/{minion_relpath}",
                     True,
                     saltenv,
                     gzip,
                 )
             )
+
         # Replicate empty dirs from master
-        try:
+        with contextlib.suppress(TypeError):
             for fn_ in self.file_list_emptydirs(saltenv, prefix=path):
                 # Prevent an empty dir "salt://foobar/" from matching a path of
                 # "salt://foo"
@@ -446,12 +433,10 @@ class Client:
                 # Remove the leading directories from path to derive
                 # the relative path on the minion.
                 minion_relpath = fn_[len(prefix) :].lstrip("/")
-                minion_mkdir = "{}/{}".format(dest, minion_relpath)
+                minion_mkdir = f"{dest}/{minion_relpath}"
                 if not os.path.isdir(minion_mkdir):
                     os.makedirs(minion_mkdir)
                 ret.append(minion_mkdir)
-        except TypeError:
-            pass
         ret.sort()
         return ret
 

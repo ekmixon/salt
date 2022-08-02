@@ -71,26 +71,24 @@ def beacon(config):
             __context__["beacon.pkg"][pkg] = None
         status = __context__["beacon.pkg"][pkg]
 
-        # Status is None, so skip the first pass
-        _installed = __salt__["pkg.version"](pkg, use_context=False)
-        if _installed:
+        if _installed := __salt__["pkg.version"](pkg, use_context=False):
             version = _installed
             __context__["beacon.pkg"][pkg] = "installed"
 
-            _latest = __salt__["pkg.latest_version"](pkg, refresh=_refresh)
-            if _latest:
+            if _latest := __salt__["pkg.latest_version"](
+                pkg, refresh=_refresh
+            ):
                 version = _latest
                 __context__["beacon.pkg"][pkg] = "upgrade"
         else:
             __context__["beacon.pkg"][pkg] = "not-installed"
             version = None
 
-        if status:
-            if __context__["beacon.pkg"][pkg] != status:
-                _pkg = {
-                    "pkg": pkg,
-                    "version": version,
-                    "status": __context__["beacon.pkg"][pkg],
-                }
-                ret.append(_pkg)
+        if status and __context__["beacon.pkg"][pkg] != status:
+            _pkg = {
+                "pkg": pkg,
+                "version": version,
+                "status": __context__["beacon.pkg"][pkg],
+            }
+            ret.append(_pkg)
     return ret

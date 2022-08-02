@@ -27,10 +27,7 @@ __virtualname__ = "cert_info"
 
 
 def __virtual__():
-    if HAS_OPENSSL is False:
-        return False
-
-    return __virtualname__
+    return False if HAS_OPENSSL is False else __virtualname__
 
 
 def validate(config):
@@ -108,7 +105,7 @@ def beacon(config):
         cert_date = datetime.strptime(
             cert.get_notAfter().decode(encoding="UTF-8"), "%Y%m%d%H%M%SZ"
         )
-        date_diff = (cert_date - datetime.today()).days
+        date_diff = (cert_date - datetime.now()).days
         log.debug("Certificate %s expires in %s days.", cert_path, date_diff)
 
         if notify_days < 0 or date_diff <= notify_days:
@@ -117,16 +114,15 @@ def beacon(config):
                 cert_path,
                 notify_days,
             )
-            extensions = []
-            for ext in range(0, cert.get_extension_count()):
-                extensions.append(
-                    {
-                        "ext_name": cert.get_extension(ext)
-                        .get_short_name()
-                        .decode(encoding="UTF-8"),
-                        "ext_data": str(cert.get_extension(ext)),
-                    }
-                )
+            extensions = [
+                {
+                    "ext_name": cert.get_extension(ext)
+                    .get_short_name()
+                    .decode(encoding="UTF-8"),
+                    "ext_data": str(cert.get_extension(ext)),
+                }
+                for ext in range(cert.get_extension_count())
+            ]
 
             certificates.append(
                 {

@@ -51,16 +51,13 @@ def _config(key, mandatory=True, opts=None):
     Return a value for 'name' from master config file options or defaults.
     """
     try:
-        if opts:
-            value = opts["auth.ldap.{}".format(key)]
-        else:
-            value = __opts__["auth.ldap.{}".format(key)]
+        value = opts[f"auth.ldap.{key}"] if opts else __opts__[f"auth.ldap.{key}"]
     except KeyError:
         try:
-            value = __defopts__["auth.ldap.{}".format(key)]
+            value = __defopts__[f"auth.ldap.{key}"]
         except KeyError:
             if mandatory:
-                msg = "missing auth.ldap.{} in master config".format(key)
+                msg = f"missing auth.ldap.{key} in master config"
                 raise SaltInvocationError(msg)
             return False
     return value
@@ -118,13 +115,13 @@ class _LDAPConnection:
 
         schema = "ldaps" if tls else "ldap"
         if self.uri == "":
-            self.uri = "{}://{}:{}".format(schema, self.server, self.port)
+            self.uri = f"{schema}://{self.server}:{self.port}"
 
         try:
             if no_verify:
                 ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
 
-            self.ldap = ldap.initialize("{}".format(self.uri))
+            self.ldap = ldap.initialize(f"{self.uri}")
             self.ldap.protocol_version = 3  # ldap.VERSION3
             self.ldap.set_option(ldap.OPT_REFERRALS, 0)  # Needed for AD
 
@@ -138,9 +135,7 @@ class _LDAPConnection:
                 self.ldap.simple_bind_s(self.binddn, self.bindpw)
         except Exception as ldap_error:  # pylint: disable=broad-except
             raise CommandExecutionError(
-                "Failed to bind to LDAP server {} as {}: {}".format(
-                    self.uri, self.binddn, ldap_error
-                )
+                f"Failed to bind to LDAP server {self.uri} as {self.binddn}: {ldap_error}"
             )
 
 
@@ -175,10 +170,10 @@ def _bind_for_search(anonymous=False, opts=None):
         ],
     }
 
-    paramvalues = {}
+    paramvalues = {
+        param: _config(param, opts=opts) for param in params["mandatory"]
+    }
 
-    for param in params["mandatory"]:
-        paramvalues[param] = _config(param, opts=opts)
 
     for param in params["additional"]:
         paramvalues[param] = _config(param, mandatory=False, opts=opts)
@@ -197,10 +192,13 @@ def _bind_for_search(anonymous=False, opts=None):
     for name in params["mandatory"]:
         connargs[name] = paramvalues[name]
 
-    if not paramvalues["anonymous"]:
-        if paramvalues["binddn"] and paramvalues["bindpw"]:
-            # search for the user's DN to be used for the actual authentication
-            return _LDAPConnection(**connargs).ldap
+    if (
+        not paramvalues["anonymous"]
+        and paramvalues["binddn"]
+        and paramvalues["bindpw"]
+    ):
+        # search for the user's DN to be used for the actual authentication
+        return _LDAPConnection(**connargs).ldap
 
 
 def _bind(username, password, anonymous=False, opts=None):
@@ -233,10 +231,10 @@ def _bind(username, password, anonymous=False, opts=None):
         ],
     }
 
-    paramvalues = {}
+    paramvalues = {
+        param: _config(param, opts=opts) for param in params["mandatory"]
+    }
 
-    for param in params["mandatory"]:
-        paramvalues[param] = _config(param, opts=opts)
 
     for param in params["additional"]:
         paramvalues[param] = _config(param, mandatory=False, opts=opts)
@@ -294,7 +292,7 @@ def _bind(username, password, anonymous=False, opts=None):
                 # and count the ones that are not None.  If that total is more than one
                 # we need to error out because the ldap filter isn't narrow enough.
                 cns = [tup[0] for tup in result]
-                total_not_none = sum(1 for c in cns if c is not None)
+                total_not_none = sum(c is not None for c in cns)
                 if total_not_none > 1:
                     log.error(
                         "LDAP lookup found multiple results for user %s", username
@@ -402,9 +400,8 @@ def groups(username, **kwargs):
 
         if _config("activedirectory"):
             try:
-                get_user_dn_search = "(&({}={})(objectClass={}))".format(
-                    _config("accountattributename"), username, _config("persontype")
-                )
+                get_user_dn_search = f'(&({_config("accountattributename")}={username})(objectClass={_config("persontype")}))'
+
                 user_dn_results = bind.search_s(
                     _config("basedn"),
                     ldap.SCOPE_SUBTREE,
@@ -419,9 +416,7 @@ def groups(username, **kwargs):
                 return group_list
             # LDAP results are always tuples.  First entry in the tuple is the DN
             dn = ldap.filter.escape_filter_chars(user_dn_results[0][0])
-            ldap_search_string = "(&(member={})(objectClass={}))".format(
-                dn, _config("groupclass")
-            )
+            ldap_search_string = f'(&(member={dn})(objectClass={_config("groupclass")}))'
             log.debug("Running LDAP group membership search: %s", ldap_search_string)
             try:
                 search_results = bind.search_s(
@@ -438,9 +433,12 @@ def groups(username, **kwargs):
                     "Exception thrown while retrieving group membership in AD: %s", e
                 )
                 return group_list
-            for _, entry in search_results:
-                if "cn" in entry:
-                    group_list.append(salt.utils.stringutils.to_unicode(entry["cn"][0]))
+            group_list.extend(
+                salt.utils.stringutils.to_unicode(entry["cn"][0])
+                for _, entry in search_results
+                if "cn" in entry
+            )
+
             log.debug("User %s is a member of groups: %s", username, group_list)
 
         elif _config("freeipa"):
@@ -459,17 +457,19 @@ def groups(username, **kwargs):
             )
 
             for entry, result in search_results:
-                for user in itertools.chain(
-                    result.get(_config("accountattributename"), []),
-                    result.get(_config("groupattribute"), []),
-                ):
+                group_list.extend(
+                    entry.split(",")[0].split("=")[-1]
+                    for user in itertools.chain(
+                        result.get(_config("accountattributename"), []),
+                        result.get(_config("groupattribute"), []),
+                    )
                     if (
                         username
                         == salt.utils.stringutils.to_unicode(user)
                         .split(",")[0]
                         .split("=")[-1]
-                    ):
-                        group_list.append(entry.split(",")[0].split("=")[-1])
+                    )
+                )
 
             log.debug("User %s is a member of groups: %s", username, group_list)
 
@@ -478,12 +478,11 @@ def groups(username, **kwargs):
                 return []
         else:
             if _config("groupou"):
-                search_base = "ou={},{}".format(_config("groupou"), _config("basedn"))
+                search_base = f'ou={_config("groupou")},{_config("basedn")}'
             else:
-                search_base = "{}".format(_config("basedn"))
-            search_string = "(&({}={})(objectClass={}))".format(
-                _config("accountattributename"), username, _config("groupclass")
-            )
+                search_base = f'{_config("basedn")}'
+            search_string = f'(&({_config("accountattributename")}={username})(objectClass={_config("groupclass")}))'
+
             search_results = bind.search_s(
                 search_base,
                 ldap.SCOPE_SUBTREE,
@@ -494,11 +493,15 @@ def groups(username, **kwargs):
                     salt.utils.stringutils.to_str(_config("groupattribute")),
                 ],
             )
-            for _, entry in search_results:
-                if username in salt.utils.data.decode(
+            group_list.extend(
+                salt.utils.stringutils.to_unicode(entry["cn"][0])
+                for _, entry in search_results
+                if username
+                in salt.utils.data.decode(
                     entry[_config("accountattributename")]
-                ):
-                    group_list.append(salt.utils.stringutils.to_unicode(entry["cn"][0]))
+                )
+            )
+
             for user, entry in search_results:
                 if (
                     username
@@ -506,14 +509,15 @@ def groups(username, **kwargs):
                     .split(",")[0]
                     .split("=")[-1]
                 ):
-                    for group in salt.utils.data.decode(
-                        entry[_config("groupattribute")]
-                    ):
-                        group_list.append(
-                            salt.utils.stringutils.to_unicode(group)
-                            .split(",")[0]
-                            .split("=")[-1]
+                    group_list.extend(
+                        salt.utils.stringutils.to_unicode(group)
+                        .split(",")[0]
+                        .split("=")[-1]
+                        for group in salt.utils.data.decode(
+                            entry[_config("groupattribute")]
                         )
+                    )
+
             log.debug("User %s is a member of groups: %s", username, group_list)
 
             # Only test user auth on first call for job.
@@ -561,11 +565,11 @@ def __expand_ldap_entries(entries, opts=None):
             continue
         for minion_or_ou, matchers in user_or_group_dict.items():
             permissions = matchers
-            retrieved_minion_ids = []
             if minion_or_ou.startswith("ldap("):
                 search_base = minion_or_ou.lstrip("ldap(").rstrip(")")
 
                 search_string = "(objectClass=computer)"
+                retrieved_minion_ids = []
                 try:
                     search_results = bind.search_s(
                         search_base, ldap.SCOPE_SUBTREE, search_string, ["cn"]
@@ -589,8 +593,7 @@ def __expand_ldap_entries(entries, opts=None):
                             # from LDAP.
                             pass
 
-                    for minion_id in retrieved_minion_ids:
-                        acl_tree.append({minion_id: permissions})
+                    acl_tree.extend({minion_id: permissions} for minion_id in retrieved_minion_ids)
                     log.trace("Expanded acl_tree is: %s", acl_tree)
                 except ldap.NO_SUCH_OBJECT:
                     pass

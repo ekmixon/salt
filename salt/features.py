@@ -8,10 +8,7 @@ log = logging.getLogger(__name__)
 
 class Features:
     def __init__(self, _features=None):
-        if _features is None:
-            self.features = {}
-        else:
-            self.features = _features
+        self.features = {} if _features is None else _features
         self.setup = False
 
     def setup_features(self, opts):

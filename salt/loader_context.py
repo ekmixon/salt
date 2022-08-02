@@ -67,9 +67,7 @@ class NamedLoaderContext(collections.abc.MutableMapping):
             return self.default
         if self.name == "__context__":
             return loader.pack[self.name]
-        if self.name == loader.pack_self:
-            return loader
-        return loader.pack[self.name]
+        return loader if self.name == loader.pack_self else loader.pack[self.name]
 
     def get(self, key, default=None):
         return self.value().get(key, default)
@@ -100,9 +98,11 @@ class NamedLoaderContext(collections.abc.MutableMapping):
         return self.value().__delitem__(item)
 
     def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return False
-        return self.loader_context == other.loader_context and self.name == other.name
+        return (
+            self.loader_context == other.loader_context and self.name == other.name
+            if isinstance(other, self.__class__)
+            else False
+        )
 
     def __getstate__(self):
         return {
@@ -156,9 +156,11 @@ class LoaderContext:
         return ctx_class(name, self, default)
 
     def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return False
-        return self.loader_ctxvar == other.loader_ctxvar
+        return (
+            self.loader_ctxvar == other.loader_ctxvar
+            if isinstance(other, self.__class__)
+            else False
+        )
 
     def __getstate__(self):
         return {"varname": self.loader_ctxvar.name}

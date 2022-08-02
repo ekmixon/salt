@@ -156,11 +156,12 @@ def _clean_tag(tag):
 
 def _l_tag(name, id_):
     low = {
-        "name": "listen_{}".format(name),
-        "__id__": "listen_{}".format(id_),
+        "name": f"listen_{name}",
+        "__id__": f"listen_{id_}",
         "state": "Listen_Error",
         "fun": "Listen_Error",
     }
+
     return _gen_tag(low)
 
 
@@ -199,9 +200,7 @@ def trim_req(req):
     Trim any function off of a requisite
     """
     reqfirst = next(iter(req))
-    if "." in reqfirst:
-        return {reqfirst.split(".")[0]: req[reqfirst]}
-    return req
+    return {reqfirst.split(".")[0]: req[reqfirst]} if "." in reqfirst else req
 
 
 def state_args(id_, state, high):
@@ -231,24 +230,24 @@ def find_name(name, state, high):
     ext_id = []
     if name in high and state in high[name]:
         ext_id.append((name, state))
-    # if we are requiring an entire SLS, then we need to add ourselves to everything in that SLS
     elif state == "sls":
-        for nid, item in high.items():
-            if item["__sls__"] == name:
-                ext_id.append((nid, next(iter(item))))
-    # otherwise we are requiring a single state, lets find it
+        ext_id.extend(
+            (nid, next(iter(item)))
+            for nid, item in high.items()
+            if item["__sls__"] == name
+        )
+
     else:
         # We need to scan for the name
         for nid in high:
-            if state in high[nid]:
-                if isinstance(high[nid][state], list):
-                    for arg in high[nid][state]:
-                        if not isinstance(arg, dict):
-                            continue
-                        if len(arg) != 1:
-                            continue
-                        if arg[next(iter(arg))] == name:
-                            ext_id.append((nid, state))
+            if state in high[nid] and isinstance(high[nid][state], list):
+                for arg in high[nid][state]:
+                    if not isinstance(arg, dict):
+                        continue
+                    if len(arg) != 1:
+                        continue
+                    if arg[next(iter(arg))] == name:
+                        ext_id.append((nid, state))
     return ext_id
 
 
@@ -268,10 +267,7 @@ def find_sls_ids(sls, high):
             continue
         else:
             if sls_tgt == sls:
-                for st_ in item:
-                    if st_.startswith("__"):
-                        continue
-                    ret.append((nid, st_))
+                ret.extend((nid, st_) for st_ in item if not st_.startswith("__"))
     return ret
 
 
@@ -286,29 +282,24 @@ def format_log(ret):
             # Yep, looks like a valid state return
             chg = ret["changes"]
             if not chg:
-                if ret["comment"]:
-                    msg = ret["comment"]
-                else:
-                    msg = "No changes made for {0[name]}".format(ret)
+                msg = ret["comment"] or "No changes made for {0[name]}".format(ret)
             elif isinstance(chg, dict):
-                if "diff" in chg:
-                    if isinstance(chg["diff"], str):
-                        msg = "File changed:\n{}".format(chg["diff"])
-                if all([isinstance(x, dict) for x in chg.values()]):
-                    if all([("old" in x and "new" in x) for x in chg.values()]):
-                        msg = "Made the following changes:\n"
-                        for pkg in chg:
-                            old = chg[pkg]["old"]
-                            if not old and old not in (False, None):
-                                old = "absent"
-                            new = chg[pkg]["new"]
-                            if not new and new not in (False, None):
-                                new = "absent"
+                if "diff" in chg and isinstance(chg["diff"], str):
+                    msg = f'File changed:\n{chg["diff"]}'
+                if all(isinstance(x, dict) for x in chg.values()) and all(
+                    ("old" in x and "new" in x) for x in chg.values()
+                ):
+                    msg = "Made the following changes:\n"
+                    for pkg in chg:
+                        old = chg[pkg]["old"]
+                        if not old and old not in (False, None):
+                            old = "absent"
+                        new = chg[pkg]["new"]
+                        if not new and new not in (False, None):
+                            new = "absent"
                             # This must be able to handle unicode as some package names contain
                             # non-ascii characters like "Français" or "Español". See Issue #33605.
-                            msg += "'{}' changed from '{}' to '{}'\n".format(
-                                pkg, old, new
-                            )
+                        msg += f"'{pkg}' changed from '{old}' to '{new}'\n"
             if not msg:
                 msg = str(ret["changes"])
             if ret["result"] is True or ret["result"] is None:
@@ -343,10 +334,7 @@ def mock_ret(cdata):
     """
     # As this is expanded it should be sent into the execution module
     # layer or it should be turned into a standalone loader system
-    if cdata["args"]:
-        name = cdata["args"][0]
-    else:
-        name = cdata["kwargs"]["name"]
+    name = cdata["args"][0] if cdata["args"] else cdata["kwargs"]["name"]
     return {
         "name": name,
         "comment": "Not called, mocked",
@@ -382,30 +370,27 @@ class Compiler:
             self.opts["renderer_whitelist"],
             **kwargs
         )
-        if not high:
-            return high
-        return self.pad_funcs(high)
+        return self.pad_funcs(high) if high else high
 
     def pad_funcs(self, high):
         """
         Turns dot delimited function refs into function strings
         """
         for name in high:
-            if not isinstance(high[name], dict):
-                if isinstance(high[name], str):
+            if not isinstance(high[name], dict) and isinstance(high[name], str):
                     # Is this is a short state? It needs to be padded!
-                    if "." in high[name]:
-                        comps = high[name].split(".")
-                        if len(comps) >= 2:
+                if "." in high[name]:
+                    comps = high[name].split(".")
+                    if len(comps) >= 2:
                             # Merge the comps
-                            comps[1] = ".".join(comps[1 : len(comps)])
-                        high[name] = {
-                            # '__sls__': template,
-                            # '__env__': None,
-                            comps[0]: [comps[1]]
-                        }
-                        continue
+                        comps[1] = ".".join(comps[1:])
+                    high[name] = {
+                        # '__sls__': template,
+                        # '__env__': None,
+                        comps[0]: [comps[1]]
+                    }
                     continue
+                continue
             skeys = set()
             for key in sorted(high[name]):
                 if key.startswith("_"):
@@ -416,7 +401,7 @@ class Compiler:
                     comps = key.split(".")
                     if len(comps) >= 2:
                         # Merge the comps
-                        comps[1] = ".".join(comps[1 : len(comps)])
+                        comps[1] = ".".join(comps[1:])
                     # Salt doesn't support state files such as:
                     #
                     # /etc/redis/redis.conf:
@@ -448,13 +433,11 @@ class Compiler:
                 continue
             if not isinstance(name, str):
                 errors.append(
-                    "ID '{}' in SLS '{}' is not formed as a string, but "
-                    "is a {}".format(name, body["__sls__"], type(name).__name__)
+                    f"""ID '{name}' in SLS '{body["__sls__"]}' is not formed as a string, but is a {type(name).__name__}"""
                 )
+
             if not isinstance(body, dict):
-                err = "The type {} in {} is not formatted as a dictionary".format(
-                    name, body
-                )
+                err = f"The type {name} in {body} is not formatted as a dictionary"
                 errors.append(err)
                 continue
             for state in body:
@@ -462,10 +445,9 @@ class Compiler:
                     continue
                 if not isinstance(body[state], list):
                     errors.append(
-                        "State '{}' in SLS '{}' is not formed as a list".format(
-                            name, body["__sls__"]
-                        )
+                        f"""State '{name}' in SLS '{body["__sls__"]}' is not formed as a list"""
                     )
+
                 else:
                     fun = 0
                     if "." in state:
@@ -475,14 +457,9 @@ class Compiler:
                             fun += 1
                             if " " in arg.strip():
                                 errors.append(
-                                    (
-                                        'The function "{}" in state '
-                                        '"{}" in SLS "{}" has '
-                                        "whitespace, a function with whitespace is "
-                                        "not supported, perhaps this is an argument "
-                                        'that is missing a ":"'
-                                    ).format(arg, name, body["__sls__"])
+                                    f'The function "{arg}" in state "{name}" in SLS "{body["__sls__"]}" has whitespace, a function with whitespace is not supported, perhaps this is an argument that is missing a ":"'
                                 )
+
                         elif isinstance(arg, dict):
                             # The arg is a dict, if the arg is require or
                             # watch, it must be a list.
@@ -493,51 +470,31 @@ class Compiler:
                             if argfirst in ("require", "watch", "prereq", "onchanges"):
                                 if not isinstance(arg[argfirst], list):
                                     errors.append(
-                                        (
-                                            "The {}"
-                                            " statement in state '{}' in SLS '{}' "
-                                            "needs to be formed as a list"
-                                        ).format(argfirst, name, body["__sls__"])
+                                        f"""The {argfirst} statement in state '{name}' in SLS '{body["__sls__"]}' needs to be formed as a list"""
                                     )
-                                # It is a list, verify that the members of the
-                                # list are all single key dicts.
+
                                 else:
                                     reqs[name] = {"state": state}
                                     for req in arg[argfirst]:
                                         if isinstance(req, str):
                                             req = {"id": req}
                                         if not isinstance(req, dict):
-                                            err = (
-                                                "Requisite declaration {}"
-                                                " in SLS {} is not formed as a"
-                                                " single key dictionary"
-                                            ).format(req, body["__sls__"])
+                                            err = f'Requisite declaration {req} in SLS {body["__sls__"]} is not formed as a single key dictionary'
+
                                             errors.append(err)
                                             continue
                                         req_key = next(iter(req))
                                         req_val = req[req_key]
                                         if "." in req_key:
                                             errors.append(
-                                                "Invalid requisite type '{}' "
-                                                "in state '{}', in SLS "
-                                                "'{}'. Requisite types must "
-                                                "not contain dots, did you "
-                                                "mean '{}'?".format(
-                                                    req_key,
-                                                    name,
-                                                    body["__sls__"],
-                                                    req_key[: req_key.find(".")],
-                                                )
+                                                f"""Invalid requisite type '{req_key}' in state '{name}', in SLS '{body["__sls__"]}'. Requisite types must not contain dots, did you mean '{req_key[: req_key.find(".")]}'?"""
                                             )
+
                                         if not ishashable(req_val):
                                             errors.append(
-                                                (
-                                                    'Illegal requisite "{}", '
-                                                    "is SLS {}\n"
-                                                ).format(
-                                                    str(req_val), body["__sls__"],
-                                                )
+                                                f'Illegal requisite "{str(req_val)}", is SLS {body["__sls__"]}\n'
                                             )
+
                                             continue
 
                                         # Check for global recursive requisites
@@ -545,46 +502,37 @@ class Compiler:
                                         # I am going beyond 80 chars on
                                         # purpose, this is just too much
                                         # of a pain to deal with otherwise
-                                        if req_val in reqs:
-                                            if name in reqs[req_val]:
-                                                if reqs[req_val][name] == state:
-                                                    if (
-                                                        reqs[req_val]["state"]
-                                                        == reqs[name][req_val]
-                                                    ):
-                                                        err = (
-                                                            "A recursive "
-                                                            "requisite was found, SLS "
-                                                            '"{}" ID "{}" ID "{}"'
-                                                        ).format(
-                                                            body["__sls__"],
-                                                            name,
-                                                            req_val,
-                                                        )
-                                                        errors.append(err)
+                                        if (
+                                            req_val in reqs
+                                            and name in reqs[req_val]
+                                            and reqs[req_val][name] == state
+                                            and (
+                                                reqs[req_val]["state"]
+                                                == reqs[name][req_val]
+                                            )
+                                        ):
+                                            err = f'A recursive requisite was found, SLS "{body["__sls__"]}" ID "{name}" ID "{req_val}"'
+
+                                            errors.append(err)
                                 # Make sure that there is only one key in the
                                 # dict
                                 if len(list(arg)) != 1:
                                     errors.append(
-                                        (
-                                            "Multiple dictionaries "
-                                            "defined in argument of state '{}' in SLS"
-                                            " '{}'"
-                                        ).format(name, body["__sls__"])
+                                        f"""Multiple dictionaries defined in argument of state '{name}' in SLS '{body["__sls__"]}'"""
                                     )
+
                     if not fun:
-                        if state == "require" or state == "watch":
+                        if state in ["require", "watch"]:
                             continue
                         errors.append(
-                            (
-                                "No function declared in state '{}' in" " SLS '{}'"
-                            ).format(state, body["__sls__"])
+                            f"""No function declared in state '{state}' in SLS '{body["__sls__"]}'"""
                         )
+
                     elif fun > 1:
                         errors.append(
-                            "Too many functions declared in state '{}' in "
-                            "SLS '{}'".format(state, body["__sls__"])
+                            f"""Too many functions declared in state '{state}' in SLS '{body["__sls__"]}'"""
                         )
+
         return errors
 
     def order_chunks(self, chunks):
@@ -658,7 +606,7 @@ class Compiler:
                                         names.append(_name)
                                 continue
                             else:
-                                chunk.update(arg)
+                                chunk |= arg
                 if names:
                     name_order = 1
                     for entry in names:
@@ -771,7 +719,7 @@ class State:
         self.pre = {}
         self.__run_num = 0
         self.jid = jid
-        self.instance_id = str(id(self))
+        self.instance_id = id(self)
         self.inject_globals = {}
         self.mocked = mocked
 
@@ -828,18 +776,15 @@ class State:
         """
         # ensure that the module is loaded
         try:
-            self.states[
-                "{}.{}".format(low["state"], low["fun"])
-            ]  # pylint: disable=W0106
+            self.states[f'{low["state"]}.{low["fun"]}']
         except KeyError:
             return
-        minit = "{}.mod_init".format(low["state"])
-        if low["state"] not in self.mod_init:
-            if minit in self.states._dict:
-                mret = self.states[minit](low)
-                if not mret:
-                    return
+        minit = f'{low["state"]}.mod_init'
+        if low["state"] not in self.mod_init and minit in self.states._dict:
+            if mret := self.states[minit](low):
                 self.mod_init.add(low["state"])
+            else:
+                return
 
     def _mod_aggregate(self, low, running, chunks):
         """
@@ -853,7 +798,7 @@ class State:
         elif not isinstance(agg_opt, list):
             return low
         if low["state"] in agg_opt and not low.get("__agg__"):
-            agg_fun = "{}.mod_aggregate".format(low["state"])
+            agg_fun = f'{low["state"]}.mod_aggregate'
             if agg_fun in self.states:
                 try:
                     low = self.states[agg_fun](low, chunks, running)
@@ -867,8 +812,6 @@ class State:
         Check that unless doesn't return 0, and that onlyif returns a 0.
         """
         ret = {"result": False, "comment": []}
-        cmd_opts = {}
-
         # Set arguments from cmd.run state as appropriate
         POSSIBLE_CMD_ARGS = (
             "cwd",
@@ -880,8 +823,10 @@ class State:
             "timeout",
             "success_retcodes",
         )
-        for run_cmd_arg in POSSIBLE_CMD_ARGS:
-            cmd_opts[run_cmd_arg] = low_data.get(run_cmd_arg)
+        cmd_opts = {
+            run_cmd_arg: low_data.get(run_cmd_arg)
+            for run_cmd_arg in POSSIBLE_CMD_ARGS
+        }
 
         if "shell" in low_data:
             cmd_opts["shell"] = low_data["shell"]
@@ -929,10 +874,11 @@ class State:
         """
         ret = {"result": False}
 
-        if not isinstance(low_data["onlyif"], list):
-            low_data_onlyif = [low_data["onlyif"]]
-        else:
-            low_data_onlyif = low_data["onlyif"]
+        low_data_onlyif = (
+            low_data["onlyif"]
+            if isinstance(low_data["onlyif"], list)
+            else [low_data["onlyif"]]
+        )
 
         # If any are False the state will NOT run
         def _check_cmd(cmd):
@@ -1004,10 +950,11 @@ class State:
         """
         ret = {"result": False}
 
-        if not isinstance(low_data["unless"], list):
-            low_data_unless = [low_data["unless"]]
-        else:
-            low_data_unless = low_data["unless"]
+        low_data_unless = (
+            low_data["unless"]
+            if isinstance(low_data["unless"], list)
+            else [low_data["unless"]]
+        )
 
         # If any are False the state will run
         def _check_cmd(cmd):
@@ -1089,12 +1036,11 @@ class State:
             )
             log.debug("Last command return code: %s", cmd)
             if cmd == 0 and ret["result"] is False:
-                ret.update(
-                    {
-                        "comment": "check_cmd determined the state succeeded",
-                        "result": True,
-                    }
-                )
+                ret |= {
+                    "comment": "check_cmd determined the state succeeded",
+                    "result": True,
+                }
+
             elif cmd != 0:
                 ret.update(
                     {
@@ -1112,11 +1058,11 @@ class State:
         ret = {"result": False}
 
         if isinstance(low_data["creates"], str) and os.path.exists(low_data["creates"]):
-            ret["comment"] = "{} exists".format(low_data["creates"])
+            ret["comment"] = f'{low_data["creates"]} exists'
             ret["result"] = True
             ret["skip_watch"] = True
         elif isinstance(low_data["creates"], list) and all(
-            [os.path.exists(path) for path in low_data["creates"]]
+            os.path.exists(path) for path in low_data["creates"]
         ):
             ret["comment"] = "All files in creates exist"
             ret["result"] = True
@@ -1160,23 +1106,21 @@ class State:
         self.functions = salt.loader.minion_mods(
             self.opts, self.state_con, utils=self.utils, proxy=self.proxy
         )
-        if isinstance(data, dict):
-            if data.get("provider", False):
-                if isinstance(data["provider"], str):
-                    providers = [{data["state"]: data["provider"]}]
-                elif isinstance(data["provider"], list):
-                    providers = data["provider"]
-                else:
-                    providers = {}
-                for provider in providers:
-                    for mod in provider:
-                        funcs = salt.loader.raw_mod(
-                            self.opts, provider[mod], self.functions
-                        )
-                        if funcs:
-                            for func in funcs:
-                                f_key = "{}{}".format(mod, func[func.rindex(".") :])
-                                self.functions[f_key] = funcs[func]
+        if isinstance(data, dict) and data.get("provider", False):
+            if isinstance(data["provider"], str):
+                providers = [{data["state"]: data["provider"]}]
+            elif isinstance(data["provider"], list):
+                providers = data["provider"]
+            else:
+                providers = {}
+            for provider in providers:
+                for mod in provider:
+                    if funcs := salt.loader.raw_mod(
+                        self.opts, provider[mod], self.functions
+                    ):
+                        for func in funcs:
+                            f_key = f'{mod}{func[func.rindex(".") :]}'
+                            self.functions[f_key] = funcs[func]
         self.serializers = salt.loader.serializers(self.opts)
         self._load_states()
         self.rend = salt.loader.render(
@@ -1198,11 +1142,7 @@ class State:
             # order for the newly installed package to be importable.
             try:
                 importlib.reload(site)
-            except RuntimeError:
-                log.error(
-                    "Error encountered during module reload. Modules were not reloaded."
-                )
-            except TypeError:
+            except (RuntimeError, TypeError):
                 log.error(
                     "Error encountered during module reload. Modules were not reloaded."
                 )
@@ -1266,39 +1206,33 @@ class State:
             errors.append(
                 "ID '{}' {}is not formed as a string, but is a {}".format(
                     data["name"],
-                    "in SLS '{}' ".format(data["__sls__"]) if "__sls__" in data else "",
+                    f"""in SLS '{data["__sls__"]}' """
+                    if "__sls__" in data
+                    else "",
                     type(data["name"]).__name__,
                 )
             )
+
         if errors:
             return errors
         full = data["state"] + "." + data["fun"]
-        if full not in self.states:
-            if "__sls__" in data:
-                errors.append(
-                    "State '{}' was not found in SLS '{}'".format(full, data["__sls__"])
-                )
-                reason = self.states.missing_fun_string(full)
-                if reason:
-                    errors.append("Reason: {}".format(reason))
-            else:
-                errors.append("Specified state '{}' was not found".format(full))
-        else:
+        if full in self.states:
             # First verify that the parameters are met
             aspec = salt.utils.args.get_function_argspec(self.states[full])
-            arglen = 0
-            deflen = 0
-            if isinstance(aspec.args, list):
-                arglen = len(aspec.args)
-            if isinstance(aspec.defaults, tuple):
-                deflen = len(aspec.defaults)
-            for ind in range(arglen - deflen):
-                if aspec.args[ind] not in data:
-                    errors.append(
-                        "Missing parameter {} for state {}".format(
-                            aspec.args[ind], full
-                        )
-                    )
+            arglen = len(aspec.args) if isinstance(aspec.args, list) else 0
+            deflen = len(aspec.defaults) if isinstance(aspec.defaults, tuple) else 0
+            errors.extend(
+                f"Missing parameter {aspec.args[ind]} for state {full}"
+                for ind in range(arglen - deflen)
+                if aspec.args[ind] not in data
+            )
+
+        elif "__sls__" in data:
+            errors.append(f"""State '{full}' was not found in SLS '{data["__sls__"]}'""")
+            if reason := self.states.missing_fun_string(full):
+                errors.append(f"Reason: {reason}")
+        else:
+            errors.append(f"Specified state '{full}' was not found")
         # If this chunk has a recursive require, then it will cause a
         # recursive loop when executing, check for it
         reqdec = ""
@@ -1310,7 +1244,7 @@ class State:
             # to just require extend the require statement with the contents
             # of watch so that the mod_watch function is not called and the
             # requisite capability is still used
-            if "{}.mod_watch".format(data["state"]) not in self.states:
+            if f'{data["state"]}.mod_watch' not in self.states:
                 if "require" in data:
                     data["require"].extend(data.pop("watch"))
                 else:
@@ -1321,15 +1255,13 @@ class State:
         if reqdec:
             for req in data[reqdec]:
                 reqfirst = next(iter(req))
-                if data["state"] == reqfirst:
-                    if fnmatch.fnmatch(data["name"], req[reqfirst]) or fnmatch.fnmatch(
-                        data["__id__"], req[reqfirst]
-                    ):
-                        err = (
-                            "Recursive require detected in SLS {} for"
-                            " require {} in ID {}"
-                        ).format(data["__sls__"], req, data["__id__"])
-                        errors.append(err)
+                if data["state"] == reqfirst and (
+                    fnmatch.fnmatch(data["name"], req[reqfirst])
+                    or fnmatch.fnmatch(data["__id__"], req[reqfirst])
+                ):
+                    err = f'Recursive require detected in SLS {data["__sls__"]} for require {req} in ID {data["__id__"]}'
+
+                    errors.append(err)
         return errors
 
     def verify_high(self, high):

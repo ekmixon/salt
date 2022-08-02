@@ -92,7 +92,7 @@ def compile_template(
         render_kwargs = dict(renderers=renderers, tmplpath=template)
         if context:
             render_kwargs["context"] = context
-        render_kwargs.update(kwargs)
+        render_kwargs |= kwargs
         if argline:
             render_kwargs["argline"] = argline
         start = time.time()
@@ -108,19 +108,17 @@ def compile_template(
             time.sleep(0.01)
             ret = render(input_data, saltenv, sls, **render_kwargs)
         input_data = ret
-        if log.isEnabledFor(logging.GARBAGE):  # pylint: disable=no-member
-            # If ret is not a StringIO (which means it was rendered using
-            # yaml, mako, or another engine which renders to a data
-            # structure) we don't want to log this.
-            if salt.utils.stringio.is_readable(ret):
-                log.debug(
-                    "Rendered data from file: %s:\n%s",
-                    template,
-                    salt.utils.sanitizers.mask_args_value(
-                        salt.utils.data.decode(ret.read()), kwargs.get("mask_value")
-                    ),
-                )  # pylint: disable=no-member
-                ret.seek(0)  # pylint: disable=no-member
+        if log.isEnabledFor(
+            logging.GARBAGE
+        ) and salt.utils.stringio.is_readable(ret):
+            log.debug(
+                "Rendered data from file: %s:\n%s",
+                template,
+                salt.utils.sanitizers.mask_args_value(
+                    salt.utils.data.decode(ret.read()), kwargs.get("mask_value")
+                ),
+            )  # pylint: disable=no-member
+            ret.seek(0)  # pylint: disable=no-member
 
     # Preserve newlines from original template
     if windows_newline:
@@ -135,9 +133,8 @@ def compile_template(
             if "\r\n" not in contents:
                 contents = contents.replace("\n", "\r\n")
                 ret = io.StringIO(contents) if is_stringio else contents
-            else:
-                if is_stringio:
-                    ret.seek(0)
+            elif is_stringio:
+                ret.seek(0)
     return ret
 
 
@@ -206,7 +203,7 @@ for comb in (
 ):
 
     fmt, tmpl = comb.split("_")
-    OLD_STYLE_RENDERERS[comb] = "{}|{}".format(tmpl, fmt)
+    OLD_STYLE_RENDERERS[comb] = f"{tmpl}|{fmt}"
 
 
 def check_render_pipe_str(pipestr, renderers, blacklist, whitelist):
@@ -226,7 +223,7 @@ def check_render_pipe_str(pipestr, renderers, blacklist, whitelist):
         if parts[0] == pipestr and pipestr in OLD_STYLE_RENDERERS:
             parts = OLD_STYLE_RENDERERS[pipestr].split("|")
         for part in parts:
-            name, argline = (part + " ").split(" ", 1)
+            name, argline = f"{part} ".split(" ", 1)
             if whitelist and name not in whitelist or blacklist and name in blacklist:
                 log.warning(
                     'The renderer "%s" is disallowed by configuration and '

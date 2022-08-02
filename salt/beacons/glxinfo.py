@@ -17,10 +17,7 @@ last_state = {}
 def __virtual__():
 
     which_result = salt.utils.path.which("glxinfo")
-    if which_result is None:
-        return False
-    else:
-        return __virtualname__
+    return False if which_result is None else __virtualname__
 
 
 def validate(config):

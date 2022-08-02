@@ -139,7 +139,7 @@ class SaltColorLogRecord(SaltLogRecord):
         self.colorprocess = "{}[{:>5}]{}".format(
             LOG_COLORS["process"], str(self.process), reset
         )
-        self.colormsg = "{}{}{}".format(cmsg, self.getMessage(), reset)
+        self.colormsg = f"{cmsg}{self.getMessage()}{reset}"
 
 
 def get_log_record_factory():
@@ -218,7 +218,7 @@ class SaltLoggingClass(
                     return instance
 
                 digits = match.group("digits")
-                if not digits or not (digits and digits.isdigit()):
+                if not digits or not digits or not digits.isdigit():
                     # No valid digits. Release handler and return.
                     handler.release()
                     return instance
@@ -273,11 +273,9 @@ class SaltLoggingClass(
                 )
             elif not isinstance(exc_info_on_loglevel, int):
                 raise RuntimeError(
-                    "The value of 'exc_info_on_loglevel' needs to be a "
-                    "logging level or a logging level name, not '{}'".format(
-                        exc_info_on_loglevel
-                    )
+                    f"The value of 'exc_info_on_loglevel' needs to be a logging level or a logging level name, not '{exc_info_on_loglevel}'"
                 )
+
         if extra is None:
             extra = {"exc_info_on_loglevel": exc_info_on_loglevel}
         else:

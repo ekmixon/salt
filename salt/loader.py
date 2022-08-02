@@ -4,6 +4,7 @@ directories for python loadable code and organizes the code into the
 plugin interfaces used by Salt.
 """
 
+
 import copy
 import functools
 import importlib
@@ -61,13 +62,21 @@ MODULE_KIND_SOURCE = 1
 MODULE_KIND_COMPILED = 2
 MODULE_KIND_EXTENSION = 3
 MODULE_KIND_PKG_DIRECTORY = 5
-SUFFIXES = []
-for suffix in importlib.machinery.EXTENSION_SUFFIXES:
-    SUFFIXES.append((suffix, "rb", MODULE_KIND_EXTENSION))
-for suffix in importlib.machinery.SOURCE_SUFFIXES:
-    SUFFIXES.append((suffix, "rb", MODULE_KIND_SOURCE))
-for suffix in importlib.machinery.BYTECODE_SUFFIXES:
-    SUFFIXES.append((suffix, "rb", MODULE_KIND_COMPILED))
+SUFFIXES = [
+    (suffix, "rb", MODULE_KIND_EXTENSION)
+    for suffix in importlib.machinery.EXTENSION_SUFFIXES
+]
+
+SUFFIXES.extend(
+    (suffix, "rb", MODULE_KIND_SOURCE)
+    for suffix in importlib.machinery.SOURCE_SUFFIXES
+)
+
+SUFFIXES.extend(
+    (suffix, "rb", MODULE_KIND_COMPILED)
+    for suffix in importlib.machinery.BYTECODE_SUFFIXES
+)
+
 MODULE_KIND_MAP = {
     MODULE_KIND_SOURCE: importlib.machinery.SourceFileLoader,
     MODULE_KIND_COMPILED: importlib.machinery.SourcelessFileLoader,
@@ -111,13 +120,10 @@ def static_loader(
         tag=tag,
         pack=pack,
     )
-    ret = {}
     funcs._load_all()
     if filter_name:
         funcs = FilterDictWrapper(funcs, filter_name)
-    for key in funcs:
-        ret[key] = funcs[key]
-    return ret
+    return {key: funcs[key] for key in funcs}
 
 
 def _module_dirs(
@@ -137,7 +143,7 @@ def _module_dirs(
     ext_type_types = []
     if ext_dirs:
         if ext_type_dirs is None:
-            ext_type_dirs = "{}_dirs".format(tag)
+            ext_type_dirs = f"{tag}_dirs"
         if ext_type_dirs in opts:
             ext_type_types.extend(opts[ext_type_dirs])
         if ext_type_dirs:
@@ -218,15 +224,16 @@ def _module_dirs(
                 else:
                     with catch_entry_points_exception(entry_point):
                         raise ValueError(
-                            "Don't know how to load a salt extension from {}".format(
-                                loaded_entry_point
-                            )
+                            f"Don't know how to load a salt extension from {loaded_entry_point}"
                         )
 
+
                 # Finally, we check all paths that we collected to see if they exist
-                for path in loaded_entry_point_paths:
-                    if os.path.exists(path):
-                        ext_type_types.append(path)
+                ext_type_types.extend(
+                    path
+                    for path in loaded_entry_point_paths
+                    if os.path.exists(path)
+                )
 
     cli_module_dirs = []
     # The dirs can be any module dir, or a in-tree _{ext_type} dir
@@ -237,7 +244,7 @@ def _module_dirs(
             cli_module_dirs.insert(0, maybe_dir)
             continue
 
-        maybe_dir = os.path.join(_dir, "_{}".format(ext_type))
+        maybe_dir = os.path.join(_dir, f"_{ext_type}")
         if os.path.isdir(maybe_dir):
             cli_module_dirs.insert(0, maybe_dir)
 
@@ -319,7 +326,7 @@ def minion_mods(
             else:
                 if funcs:
                     for func in funcs:
-                        f_key = "{}{}".format(mod, func[func.rindex(".") :])
+                        f_key = f'{mod}{func[func.rindex(".") :]}'
                         ret[f_key] = funcs[func]
 
     if notify:
@@ -562,10 +569,9 @@ def fileserver(opts, backends):
         backend_set = set()
         vcs_re = re.compile("^(git|svn|hg)(?:fs)?$")
         for backend in backends:
-            match = vcs_re.match(backend)
-            if match:
-                backend_set.add(match.group(1))
-                backend_set.add(match.group(1) + "fs")
+            if match := vcs_re.match(backend):
+                backend_set.add(match[1])
+                backend_set.add(match[1] + "fs")
             else:
                 backend_set.add(backend)
         backends = list(backend_set)
@@ -730,10 +736,8 @@ def render(opts, functions, states=None, proxy=None, context=None):
     if not check_render_pipe_str(
         opts["renderer"], rend, opts["renderer_blacklist"], opts["renderer_whitelist"]
     ):
-        err = (
-            "The renderer {} is unavailable, this error is often because "
-            "the needed software is unavailable".format(opts["renderer"])
-        )
+        err = f'The renderer {opts["renderer"]} is unavailable, this error is often because the needed software is unavailable'
+
         log.critical(err)
         raise LoaderError(err)
     return rend
@@ -840,8 +844,7 @@ def grains(opts, force_refresh=False, proxy=None, context=None):
     # if we have no grains, lets try loading from disk (TODO: move to decorator?)
     cfn = os.path.join(opts["cachedir"], "grains.cache.p")
     if not force_refresh and opts.get("grains_cache", False):
-        cached_grains = _load_cached_grains(opts, cfn)
-        if cached_grains:
+        if cached_grains := _load_cached_grains(opts, cfn):
             return cached_grains
     else:
         log.debug("Grains refresh requested. Refreshing grains.")
@@ -851,13 +854,12 @@ def grains(opts, force_refresh=False, proxy=None, context=None):
     grains_deep_merge = opts.get("grains_deep_merge", False) is True
     if "conf_file" in opts:
         pre_opts = {}
-        pre_opts.update(
-            salt.config.load_config(
-                opts["conf_file"],
-                "SALT_MINION_CONFIG",
-                salt.config.DEFAULT_MINION_OPTS["conf_file"],
-            )
+        pre_opts |= salt.config.load_config(
+            opts["conf_file"],
+            "SALT_MINION_CONFIG",
+            salt.config.DEFAULT_MINION_OPTS["conf_file"],
         )
+
         default_include = pre_opts.get("default_include", opts["default_include"])
         include = pre_opts.get("include", [])
         pre_opts.update(
@@ -868,10 +870,7 @@ def grains(opts, force_refresh=False, proxy=None, context=None):
         pre_opts.update(
             salt.config.include_config(include, opts["conf_file"], verbose=True)
         )
-        if "grains" in pre_opts:
-            opts["grains"] = pre_opts["grains"]
-        else:
-            opts["grains"] = {}
+        opts["grains"] = pre_opts.get("grains", {})
     else:
         opts["grains"] = {}
 
@@ -899,7 +898,7 @@ def grains(opts, force_refresh=False, proxy=None, context=None):
         if grains_deep_merge:
             salt.utils.dictupdate.update(grains_data, ret)
         else:
-            grains_data.update(ret)
+            grains_data |= ret
 
     # Run the rest of the grains
     for key in funcs:
@@ -951,22 +950,22 @@ def grains(opts, force_refresh=False, proxy=None, context=None):
     if opts.get("proxy_merge_grains_in_module", True) and proxy:
         try:
             proxytype = proxy.opts["proxy"]["proxytype"]
-            if proxytype + ".grains" in proxy:
-                if (
-                    proxytype + ".initialized" in proxy
-                    and proxy[proxytype + ".initialized"]()
-                ):
-                    try:
-                        proxytype = proxy.opts["proxy"]["proxytype"]
-                        ret = proxy[proxytype + ".grains"]()
-                        if grains_deep_merge:
-                            salt.utils.dictupdate.update(grains_data, ret)
-                        else:
-                            grains_data.update(ret)
-                    except Exception:  # pylint: disable=broad-except
-                        log.critical(
-                            "Failed to run proxy's grains function!", exc_info=True
-                        )
+            if (
+                f"{proxytype}.grains" in proxy
+                and f"{proxytype}.initialized" in proxy
+                and proxy[f"{proxytype}.initialized"]()
+            ):
+                try:
+                    proxytype = proxy.opts["proxy"]["proxytype"]
+                    ret = proxy[f"{proxytype}.grains"]()
+                    if grains_deep_merge:
+                        salt.utils.dictupdate.update(grains_data, ret)
+                    else:
+                        grains_data.update(ret)
+                except Exception:  # pylint: disable=broad-except
+                    log.critical(
+                        "Failed to run proxy's grains function!", exc_info=True
+                    )
         except KeyError:
             pass
 
@@ -980,7 +979,7 @@ def grains(opts, force_refresh=False, proxy=None, context=None):
                     import salt.modules.cmdmod
 
                     # Make sure cache file isn't read-only
-                    salt.modules.cmdmod._run_quiet('attrib -R "{}"'.format(cfn))
+                    salt.modules.cmdmod._run_quiet(f'attrib -R "{cfn}"')
                 with salt.utils.files.fopen(cfn, "w+b") as fp_:
                     try:
                         serial = salt.payload.Serial(opts)
@@ -1170,7 +1169,7 @@ def _generate_module(name):
     if name in sys.modules:
         return
 
-    code = "'''Salt loaded {} parent module'''".format(name.split(".")[-1])
+    code = f"""'''Salt loaded {name.split(".")[-1]} parent module'''"""
     # ModuleType can't accept a unicode type on PY2
     module = types.ModuleType(str(name))
     exec(code, module.__dict__)
@@ -1178,9 +1177,7 @@ def _generate_module(name):
 
 
 def _mod_type(module_path):
-    if module_path.startswith(SALT_BASE_PATH):
-        return "int"
-    return "ext"
+    return "int" if module_path.startswith(SALT_BASE_PATH) else "ext"
 
 
 # TODO: move somewhere else?

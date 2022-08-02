@@ -4,6 +4,7 @@ noxfile
 
 Nox configuration script
 """
+
 # pylint: disable=resource-leakage,3rd-party-module-not-gated
 
 
@@ -59,8 +60,9 @@ os.chdir(REPO_ROOT)
 RUNTESTS_LOGFILE = os.path.join(
     "artifacts",
     "logs",
-    "runtests-{}.log".format(datetime.datetime.now().strftime("%Y%m%d%H%M%S.%f")),
+    f'runtests-{datetime.datetime.now().strftime("%Y%m%d%H%M%S.%f")}.log',
 )
+
 
 # Prevent Python from writing bytecode
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -192,8 +194,9 @@ def _get_pip_requirements_file(session, transport, crypto=None, requirements_typ
                 "static",
                 requirements_type,
                 pydir,
-                "{}-windows.txt".format(transport),
+                f"{transport}-windows.txt",
             )
+
             if os.path.exists(_requirements_file):
                 return _requirements_file
             _requirements_file = os.path.join(
@@ -204,8 +207,6 @@ def _get_pip_requirements_file(session, transport, crypto=None, requirements_typ
         _requirements_file = os.path.join(
             "requirements", "static", requirements_type, pydir, "windows-crypto.txt"
         )
-        if os.path.exists(_requirements_file):
-            return _requirements_file
     elif IS_DARWIN:
         if crypto is None:
             _requirements_file = os.path.join(
@@ -213,8 +214,9 @@ def _get_pip_requirements_file(session, transport, crypto=None, requirements_typ
                 "static",
                 requirements_type,
                 pydir,
-                "{}-darwin.txt".format(transport),
+                f"{transport}-darwin.txt",
             )
+
             if os.path.exists(_requirements_file):
                 return _requirements_file
             _requirements_file = os.path.join(
@@ -225,8 +227,6 @@ def _get_pip_requirements_file(session, transport, crypto=None, requirements_typ
         _requirements_file = os.path.join(
             "requirements", "static", requirements_type, pydir, "darwin-crypto.txt"
         )
-        if os.path.exists(_requirements_file):
-            return _requirements_file
     elif IS_FREEBSD:
         if crypto is None:
             _requirements_file = os.path.join(
@@ -234,8 +234,9 @@ def _get_pip_requirements_file(session, transport, crypto=None, requirements_typ
                 "static",
                 requirements_type,
                 pydir,
-                "{}-freebsd.txt".format(transport),
+                f"{transport}-freebsd.txt",
             )
+
             if os.path.exists(_requirements_file):
                 return _requirements_file
             _requirements_file = os.path.join(
@@ -246,8 +247,6 @@ def _get_pip_requirements_file(session, transport, crypto=None, requirements_typ
         _requirements_file = os.path.join(
             "requirements", "static", requirements_type, pydir, "freebsd-crypto.txt"
         )
-        if os.path.exists(_requirements_file):
-            return _requirements_file
     else:
         _install_system_packages(session)
         if crypto is None:
@@ -256,8 +255,9 @@ def _get_pip_requirements_file(session, transport, crypto=None, requirements_typ
                 "static",
                 requirements_type,
                 pydir,
-                "{}-linux.txt".format(transport),
+                f"{transport}-linux.txt",
             )
+
             if os.path.exists(_requirements_file):
                 return _requirements_file
             _requirements_file = os.path.join(
@@ -268,8 +268,8 @@ def _get_pip_requirements_file(session, transport, crypto=None, requirements_typ
         _requirements_file = os.path.join(
             "requirements", "static", requirements_type, pydir, "linux-crypto.txt"
         )
-        if os.path.exists(_requirements_file):
-            return _requirements_file
+    if os.path.exists(_requirements_file):
+        return _requirements_file
 
 
 def _install_requirements(
@@ -535,13 +535,14 @@ def pytest_parametrized(session, coverage, transport, crypto):
     cmd_args = [
         "--rootdir",
         REPO_ROOT,
-        "--log-file={}".format(RUNTESTS_LOGFILE),
+        f"--log-file={RUNTESTS_LOGFILE}",
         "--log-file-level=debug",
         "--show-capture=no",
         "-ra",
         "-s",
-        "--transport={}".format(transport),
+        f"--transport={transport}",
     ] + session.posargs
+
     _pytest(session, coverage, cmd_args)
 
 
@@ -554,7 +555,7 @@ def pytest(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto=None,
             transport="zeromq",
@@ -571,7 +572,7 @@ def pytest_tcp(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto=None,
             transport="tcp",
@@ -588,7 +589,7 @@ def pytest_zeromq(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto=None,
             transport="zeromq",
@@ -605,7 +606,7 @@ def pytest_m2crypto(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto="m2crypto",
             transport="zeromq",
@@ -622,7 +623,7 @@ def pytest_tcp_m2crypto(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto="m2crypto",
             transport="tcp",
@@ -639,7 +640,7 @@ def pytest_zeromq_m2crypto(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto="m2crypto",
             transport="zeromq",
@@ -656,7 +657,7 @@ def pytest_pycryptodome(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto="pycryptodome",
             transport="zeromq",
@@ -673,7 +674,7 @@ def pytest_tcp_pycryptodome(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto="pycryptodome",
             transport="tcp",
@@ -690,7 +691,7 @@ def pytest_zeromq_pycryptodome(session, coverage):
     session.notify(
         find_session_runner(
             session,
-            "pytest-parametrized-{}".format(session.python),
+            f"pytest-parametrized-{session.python}",
             coverage=coverage,
             crypto="pycryptodome",
             transport="zeromq",
@@ -716,7 +717,7 @@ def pytest_cloud(session, coverage):
     cmd_args = [
         "--rootdir",
         REPO_ROOT,
-        "--log-file={}".format(RUNTESTS_LOGFILE),
+        f"--log-file={RUNTESTS_LOGFILE}",
         "--log-file-level=debug",
         "--show-capture=no",
         "-ra",
@@ -725,6 +726,7 @@ def pytest_cloud(session, coverage):
         "-k",
         "cloud",
     ] + session.posargs
+
     _pytest(session, coverage, cmd_args)
 
 
@@ -742,12 +744,13 @@ def pytest_tornado(session, coverage):
     cmd_args = [
         "--rootdir",
         REPO_ROOT,
-        "--log-file={}".format(RUNTESTS_LOGFILE),
+        f"--log-file={RUNTESTS_LOGFILE}",
         "--log-file-level=debug",
         "--show-capture=no",
         "-ra",
         "-s",
     ] + session.posargs
+
     _pytest(session, coverage, cmd_args)
 
 
@@ -788,29 +791,6 @@ def _pytest(session, coverage, cmd_args):
     except CommandFailed:  # pylint: disable=try-except-raise
         # Not rerunning failed tests for now
         raise
-
-        # pylint: disable=unreachable
-        # Re-run failed tests
-        session.log("Re-running failed tests")
-
-        for idx, parg in enumerate(cmd_args):
-            if parg.startswith("--junitxml="):
-                cmd_args[idx] = parg.replace(".xml", "-rerun-failed.xml")
-        cmd_args.append("--lf")
-        if coverage is True:
-            _run_with_coverage(
-                session,
-                "python",
-                "-m",
-                "coverage",
-                "run",
-                "-m",
-                "pytest",
-                "--showlocals",
-                *cmd_args
-            )
-        else:
-            session.run("python", "-m", "pytest", *cmd_args, env=env)
         # pylint: enable=unreachable
 
 
@@ -845,7 +825,7 @@ def _lint(session, rcfile, flags, paths, tee_output=True):
         session.run("pylint", "--version")
         pylint_report_path = os.environ.get("PYLINT_REPORT")
 
-    cmd_args = ["pylint", "--rcfile={}".format(rcfile)] + list(flags) + list(paths)
+    cmd_args = ["pylint", f"--rcfile={rcfile}"] + list(flags) + list(paths)
 
     cmd_kwargs = {"env": {"PYTHONUNBUFFERED": "1"}}
 
@@ -862,12 +842,8 @@ def _lint(session, rcfile, flags, paths, tee_output=True):
     finally:
         if tee_output:
             stdout.seek(0)
-            contents = stdout.read()
-            if contents:
-                if IS_PY3:
-                    contents = contents.decode("utf-8")
-                else:
-                    contents = contents.encode("utf-8")
+            if contents := stdout.read():
+                contents = contents.decode("utf-8") if IS_PY3 else contents.encode("utf-8")
                 sys.stdout.write(contents)
                 sys.stdout.flush()
                 if pylint_report_path:
@@ -886,11 +862,9 @@ def _lint_pre_commit(session, rcfile, flags, paths):
         )
     if "pre-commit" not in os.environ["VIRTUAL_ENV"]:
         session.error(
-            "This should be running from within a pre-commit virtualenv and "
-            "'VIRTUAL_ENV'({}) does not appear to be a pre-commit virtualenv.".format(
-                os.environ["VIRTUAL_ENV"]
-            )
+            f"""This should be running from within a pre-commit virtualenv and 'VIRTUAL_ENV'({os.environ["VIRTUAL_ENV"]}) does not appear to be a pre-commit virtualenv."""
         )
+
     from nox.virtualenv import VirtualEnv
 
     # Let's patch nox to make it run inside the pre-commit virtualenv
@@ -916,8 +890,8 @@ def lint(session):
     """
     Run PyLint against Salt and it's test suite. Set PYLINT_REPORT to a path to capture output.
     """
-    session.notify("lint-salt-{}".format(session.python))
-    session.notify("lint-tests-{}".format(session.python))
+    session.notify(f"lint-salt-{session.python}")
+    session.notify(f"lint-tests-{session.python}")
 
 
 @nox.session(python="3", name="lint-salt")
@@ -926,10 +900,7 @@ def lint_salt(session):
     Run PyLint against Salt. Set PYLINT_REPORT to a path to capture output.
     """
     flags = ["--disable=I"]
-    if session.posargs:
-        paths = session.posargs
-    else:
-        paths = ["setup.py", "noxfile.py", "salt/", "tasks/"]
+    paths = session.posargs or ["setup.py", "noxfile.py", "salt/", "tasks/"]
     _lint(session, ".pylintrc", flags, paths)
 
 
@@ -939,10 +910,7 @@ def lint_tests(session):
     Run PyLint against Salt and it's test suite. Set PYLINT_REPORT to a path to capture output.
     """
     flags = ["--disable=I"]
-    if session.posargs:
-        paths = session.posargs
-    else:
-        paths = ["tests/"]
+    paths = session.posargs or ["tests/"]
     _lint(session, ".pylintrc", flags, paths)
 
 
@@ -952,10 +920,7 @@ def lint_salt_pre_commit(session):
     Run PyLint against Salt. Set PYLINT_REPORT to a path to capture output.
     """
     flags = ["--disable=I"]
-    if session.posargs:
-        paths = session.posargs
-    else:
-        paths = ["setup.py", "noxfile.py", "salt/"]
+    paths = session.posargs or ["setup.py", "noxfile.py", "salt/"]
     _lint_pre_commit(session, ".pylintrc", flags, paths)
 
 
@@ -965,10 +930,7 @@ def lint_tests_pre_commit(session):
     Run PyLint against Salt and it's test suite. Set PYLINT_REPORT to a path to capture output.
     """
     flags = ["--disable=I"]
-    if session.posargs:
-        paths = session.posargs
-    else:
-        paths = ["tests/"]
+    paths = session.posargs or ["tests/"]
     _lint_pre_commit(session, ".pylintrc", flags, paths)
 
 
@@ -980,11 +942,11 @@ def docs(session, compress, update, clean):
     """
     Build Salt's Documentation
     """
-    session.notify("docs-html-{}(compress={})".format(session.python, compress))
+    session.notify(f"docs-html-{session.python}(compress={compress})")
     session.notify(
         find_session_runner(
             session,
-            "docs-man-{}".format(session.python),
+            f"docs-man-{session.python}",
             compress=compress,
             update=update,
             clean=clean,
@@ -1066,7 +1028,7 @@ def invoke(session):
             continue
         files.append(posarg)
     if files:
-        cmd.append("--files={}".format(" ".join(files)))
+        cmd.append(f'--files={" ".join(files)}')
     session.run(*cmd)
 
 
@@ -1082,7 +1044,7 @@ def changelog(session, draft):
     install_command = ["--progress-bar=off", "-r", requirements_file]
     session.install(*install_command, silent=PIP_INSTALL_SILENT)
 
-    town_cmd = ["towncrier", "--version={}".format(session.posargs[0])]
+    town_cmd = ["towncrier", f"--version={session.posargs[0]}"]
     if draft:
         town_cmd.append("--draft")
     session.run(*town_cmd)
